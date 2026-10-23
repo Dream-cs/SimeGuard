@@ -1,0 +1,2583 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SimeGuard Security Dashboard - Custom Blueprint</title>
+    <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 viewBox=%270 0 100 100%27%3E%3Ctext y=%27.9em%27 font-size=%2790%27%3E%F0%9F%9B%A1%EF%B8%8F%3C/text%3E%3C/svg%3E">
+    <script src="https://cdn.tailwindcss.com"></script>
+    
+    <!-- Leaflet CSS & JS -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin=""/>
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
+
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@500;700;900&family=Rajdhani:wght@500;600;700&family=Share+Tech+Mono&display=swap" rel="stylesheet">
+    <style>
+        body { font-family: 'Rajdhani', 'Segoe UI', sans-serif; background: #02040a; }
+        .font-hud  { font-family: 'Orbitron', 'Segoe UI', sans-serif; }
+        .font-data { font-family: 'Share Tech Mono', ui-monospace, Consolas, monospace; }
+
+        /* Global cyber grid + vignette */
+        body::before {
+            content: ""; position: fixed; inset: 0; z-index: 0; pointer-events: none;
+            background-image:
+                linear-gradient(rgba(34,211,238,.045) 1px, transparent 1px),
+                linear-gradient(90deg, rgba(34,211,238,.045) 1px, transparent 1px);
+            background-size: 44px 44px;
+        }
+        body::after {
+            content: ""; position: fixed; inset: 0; z-index: 1; pointer-events: none;
+            background: radial-gradient(ellipse at center, transparent 55%, rgba(0,0,0,.65) 100%);
+        }
+
+        /* Panels */
+        .hud-panel {
+            background: rgba(5, 12, 24, .88);
+            border: 1px solid rgba(34, 211, 238, .35);
+            box-shadow: 0 0 16px rgba(34, 211, 238, .15), inset 0 0 18px rgba(34, 211, 238, .06);
+            backdrop-filter: blur(10px);
+        }
+        .hud-label { display: block; font-size: 9px; letter-spacing: .18em; color: #38bdf8; font-family: 'Share Tech Mono', monospace; font-weight: 600; }
+        .hud-value { display: block; font-family: 'Orbitron', sans-serif; font-size: 13px; font-weight: 700; color: #f8fafc; text-shadow: 0 0 8px rgba(34,211,238,.3); }
+        .hud-stat  { padding-left: 0.8rem; border-left: 1px solid rgba(34,211,238,.25); white-space: nowrap; }
+        .hud-stat-alert { background: rgba(239,68,68,.12); border-color: rgba(248,113,113,.5) !important; border-radius: .35rem; padding: .15rem .5rem; }
+        
+        .hud-btn {
+            font-family: 'Orbitron', sans-serif; font-size: 10px; letter-spacing: .08em; font-weight: 700;
+            padding: .35rem .55rem; border-radius: .35rem; color: #67e8f9;
+            border: 1px solid rgba(34,211,238,.4); background: rgba(34,211,238,.06); transition: .15s; white-space: nowrap;
+        }
+        .hud-btn:hover { background: rgba(34,211,238,.18); box-shadow: 0 0 12px rgba(34,211,238,.5); }
+        .hud-btn.off { opacity: .4; }
+        .hud-btn-danger { color: #fca5a5; border-color: rgba(248,113,113,.5); background: rgba(239,68,68,.08); }
+        .hud-btn-danger:hover { background: rgba(239,68,68,.25); box-shadow: 0 0 12px rgba(239,68,68,.6); }
+
+        /* Neon map frame */
+        .neon-frame {
+            border: 1px solid rgba(34, 211, 238, .8);
+            box-shadow: 0 0 6px rgba(34,211,238,.9), 0 0 24px rgba(34,211,238,.45),
+                        0 0 70px rgba(217,70,239,.2), inset 0 0 30px rgba(34,211,238,.18);
+            animation: frame-pulse 4s ease-in-out infinite;
+        }
+        @keyframes frame-pulse {
+            50% { box-shadow: 0 0 10px rgba(34,211,238,1), 0 0 36px rgba(34,211,238,.6),
+                              0 0 90px rgba(217,70,239,.3), inset 0 0 40px rgba(34,211,238,.25); }
+        }
+
+        /* -----------------------------------------------------
+           CRITICAL LEAFLET + TAILWIND FIXES 
+           ----------------------------------------------------- */
+        .leaflet-container img, 
+        .leaflet-container svg, 
+        .leaflet-container path,
+        .leaflet-container canvas {
+            max-width: none !important;
+            max-height: none !important;
+            display: inline !important;
+        }
+        .leaflet-container { background: transparent !important; outline: none; }
+        
+        /* Dark Mode Blueprint Filter for your Map Image */
+        .leaflet-image-layer { 
+            filter: invert(1) hue-rotate(180deg) sepia(0.3) saturate(2) brightness(0.9) contrast(1.3); 
+        }
+        
+        /* Zoom Control Cyber Styling */
+        .leaflet-control-zoom { border: 1px solid rgba(34,211,238,.4) !important; background: rgba(5,12,24,.9) !important; border-radius: 4px !important; overflow: hidden; margin-top: 15px !important; margin-left: 15px !important; }
+        .leaflet-control-zoom a { color: #67e8f9 !important; background: transparent !important; border-bottom: 1px solid rgba(34,211,238,.3) !important; width: 30px !important; height: 30px !important; line-height: 30px !important; font-family: 'Share Tech Mono', monospace; font-size: 16px !important; }
+        .leaflet-control-zoom a:last-child { border-bottom: none !important; }
+        .leaflet-control-zoom a:hover { background: rgba(34,211,238,.2) !important; }
+        
+        .cyber-tooltip {
+            background: rgba(5, 12, 24, 0.95); border: 1px solid rgba(34, 211, 238, 0.5);
+            color: white; font-family: 'Share Tech Mono', monospace; font-size: 11px;
+            box-shadow: 0 0 15px rgba(0,0,0,0.8); border-radius: 4px; padding: 6px 10px;
+        }
+        
+        /* Ensure overlay visual effects allow mouse clicks through to the map */
+        .map-tint { background: linear-gradient(135deg, rgba(8,47,73,.85), rgba(59,7,100,.6)); pointer-events: none; }
+        .map-grid {
+            background-image: linear-gradient(rgba(34,211,238,.09) 1px, transparent 1px), linear-gradient(90deg, rgba(34,211,238,.09) 1px, transparent 1px);
+            background-size: 36px 36px; pointer-events: none;
+        }
+        .scanlines { background: repeating-linear-gradient(to bottom, rgba(0,0,0,0) 0, rgba(0,0,0,0) 2px, rgba(0,0,0,.3) 3px); pointer-events: none; }
+        .scanbeam {
+            position: absolute; left: 0; right: 0; height: 90px; top: -20%;
+            background: linear-gradient(to bottom, transparent, rgba(34,211,238,.2), transparent);
+            animation: beam 5s linear infinite; pointer-events: none;
+        }
+        @keyframes beam { from { top: -20%; } to { top: 110%; } }
+
+        /* Camera markers */
+        .custom-leaflet-marker { pointer-events: auto; }
+        .marker { transition: box-shadow .2s; }
+        .marker:hover { box-shadow: 0 0 16px rgba(103, 232, 249, 0.8); }
+        .marker-ok { box-shadow: 0 0 10px #34d399; }
+        .marker-alert { box-shadow: 0 0 14px #ef4444; animation: alertpulse .9s ease-in-out infinite; }
+        @keyframes alertpulse { 0%,100% { box-shadow: 0 0 6px #ef4444; } 50% { box-shadow: 0 0 24px 4px #ef4444; } }
+        .marker-selected { outline: 2px solid #67e8f9; outline-offset: 4px; }
+
+        /* Trajectories SVG styling inside Leaflet */
+        path.traj-animated { stroke-dasharray: 10 10; animation: traj-dash 1s linear infinite; }
+        path.traj-pred { stroke-dasharray: 6 6; animation: traj-dash 1s linear infinite; }
+        @keyframes traj-dash { to { stroke-dashoffset: -20; } }
+
+        /* Alert cards */
+        .alert-card { border: 1px solid rgba(148,163,184,.15); transition: .2s; }
+        .alert-card:hover { background: rgba(15,23,42,.95); }
+        .card-hot { box-shadow: 0 0 18px var(--c); background: rgba(15,23,42,.98); }
+        .card-dim { opacity: .4; }
+        .card-new { animation: slidein .5s ease-out, newglow 2.2s ease-out; }
+        @keyframes slidein { from { transform: translateX(-30px); opacity: 0; } to { transform: none; opacity: 1; } }
+        @keyframes newglow { 0% { box-shadow: 0 0 26px var(--c); } 100% { box-shadow: 0 0 0 transparent; } }
+
+        .legend-row { border-left: 2px solid var(--c); padding: .4rem .6rem; margin-bottom: .4rem; cursor: pointer; background: rgba(15,23,42,.6); transition: .2s; border-radius: 0 .35rem .35rem 0; }
+        .legend-row:hover { background: rgba(30,41,59,.9); }
+
+        /* Screen flash on new alert */
+        #alert-flash.flash { animation: flash .9s ease-out; }
+        @keyframes flash { from { box-shadow: inset 0 0 140px 30px rgba(244,63,94,.6); } to { box-shadow: inset 0 0 0 0 rgba(244,63,94,0); } }
+
+        /* Toast notification */
+        #toast-container {
+            position: fixed; top: 4.8rem; right: 1.5rem; z-index: 120;
+            display: flex; flex-direction: column; gap: 0.5rem; pointer-events: none;
+        }
+        .toast {
+            pointer-events: auto; min-width: 280px; max-width: 360px;
+            background: rgba(10, 20, 38, 0.95); border: 1px solid rgba(34, 211, 238, 0.5);
+            box-shadow: 0 0 20px rgba(34, 211, 238, 0.25); border-radius: 0.5rem;
+            padding: 0.75rem 1rem; font-family: 'Share Tech Mono', monospace; font-size: 12px;
+            color: #f8fafc; display: flex; align-items: flex-start; gap: 0.75rem;
+            animation: toast-in 0.3s ease-out forwards;
+        }
+        .toast.success { border-color: rgba(52, 211, 153, 0.6); box-shadow: 0 0 20px rgba(52, 211, 153, 0.25); }
+        .toast.error { border-color: rgba(248, 113, 113, 0.6); box-shadow: 0 0 20px rgba(248, 113, 113, 0.25); }
+        @keyframes toast-in { from { transform: translateY(-20px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
+        @keyframes toast-out { from { transform: translateY(0); opacity: 1; } to { transform: translateY(-20px); opacity: 0; } }
+
+        /* Form fields */
+        .f-label { display:block; margin-bottom:.3rem; font-family:'Share Tech Mono',monospace; font-size:10px; letter-spacing:.14em; text-transform:uppercase; color:#7dd3fc; }
+        .f-input { width:100%; height:2.5rem; padding:0 .75rem; border-radius:.5rem; font-size:.875rem; color:#f1f5f9; background:rgba(2,6,23,.9); border:1px solid rgba(100,116,139,.55); transition:.15s; }
+        .f-input::placeholder { color:#64748b; }
+        .f-input:focus { outline:none; border-color:#22d3ee; box-shadow:0 0 0 3px rgba(34,211,238,.18); }
+        .f-input[readonly] { color:#94a3b8; background:rgba(15,23,42,.9); border-style:dashed; cursor:not-allowed; }
+        select.f-input {
+            appearance:none; padding-right:2rem;
+            background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' fill='none' stroke='%2367e8f9' stroke-width='2'%3E%3Cpath d='M1 1l5 5 5-5'/%3E%3C/svg%3E");
+            background-repeat:no-repeat; background-position:right .75rem center;
+        }
+        .f-section { display:flex; align-items:center; gap:.6rem; margin-top:.25rem; font-family:'Orbitron',sans-serif; font-size:10px; font-weight:700; letter-spacing:.2em; color:#67e8f9; }
+        .f-section::after { content:""; flex:1; height:1px; background:linear-gradient(90deg, rgba(34,211,238,.45), transparent); }
+        .f-submit {
+            width:100%; height:2.75rem; border-radius:.5rem; font-family:'Orbitron',sans-serif; font-size:12px; font-weight:700; letter-spacing:.12em; color:#fff;
+            background:linear-gradient(90deg,#2563eb,#0891b2); box-shadow:0 0 16px rgba(34,211,238,.35); transition:.15s;
+        }
+        .f-submit:hover { filter:brightness(1.15); box-shadow:0 0 24px rgba(34,211,238,.6); }
+        .f-submit:disabled { cursor:wait; opacity:.6; }
+
+        /* Scrollbars */
+        ::-webkit-scrollbar { width: 6px; height: 6px; }
+        ::-webkit-scrollbar-track { background: rgba(15,23,42,.6); }
+        ::-webkit-scrollbar-thumb { background: rgba(34,211,238,.45); border-radius: 3px; }
+
+        /* ===== UI polish: readability, calmer effects, clearer controls ===== */
+        :root { --ink: #e6f1fb; --ink-dim: #9fb3c8; --line: rgba(125,211,252,.24); }
+        body { font-size: 15px; color: var(--ink); }
+        .hud-panel { background: rgba(7,16,30,.93); border-color: var(--line); box-shadow: 0 10px 30px rgba(0,0,0,.45); }
+        .neon-frame { animation: none; box-shadow: 0 0 0 1px rgba(34,211,238,.45), 0 0 28px rgba(34,211,238,.16), inset 0 0 40px rgba(34,211,238,.07); }
+        .hud-label { font-size: 12px; letter-spacing: .08em; color: #7dd3fc; }
+        .hud-value { font-size: 14px; }
+        .hud-btn { font-size: 12px; padding: .45rem .75rem; min-height: 34px; }
+        .f-label { font-size: 12px; letter-spacing: .06em; }
+        .text-\[9px\] { font-size: 12px !important; }
+        .text-\[10px\] { font-size: 12px !important; }
+        .text-\[11px\] { font-size: 12.5px !important; }
+        .type-pill { font-size: 12px !important; }
+        .f-section { font-size: 12px !important; }
+        .pw-toggle { font-size: 12px !important; }
+        .cyber-tooltip { font-size: 12.5px !important; }
+        /* map markers: a symbol, not only a colour, tells "alert" from "no alert" */
+        .marker-glyph { position: relative; font: 800 11px/1 system-ui, sans-serif; color: #fff; pointer-events: none; }
+        .legend-alert { display: inline-flex; align-items: center; justify-content: center; width: .95rem; height: .95rem; color: #fff; font: 800 10px/1 system-ui, sans-serif; }
+        .traj-glyph { font-size: 15px; line-height: 1; filter: drop-shadow(0 0 3px #000); pointer-events: none; }
+        .toast { font-size: 13.5px; }
+        button, input, select { transition: box-shadow .15s, border-color .15s, background-color .15s; }
+        :focus-visible { outline: 2px solid #67e8f9; outline-offset: 2px; }
+        #dt-rows { font-size: 13.5px; line-height: 1.55; }
+        #dt-rows > div > span:first-child { color: #8fa6bd; }
+
+        .alert-card { background: rgba(12,22,38,.92); border-radius: .65rem; }
+        .type-pill {
+            display: inline-flex; align-items: center; gap: .35rem; padding: .12rem .6rem; border-radius: 999px;
+            font-size: 12px; font-weight: 700; letter-spacing: .05em; color: var(--c);
+            background: color-mix(in srgb, var(--c) 15%, transparent);
+            border: 1px solid color-mix(in srgb, var(--c) 45%, transparent);
+        }
+        .chip { font-size: 12.5px; font-weight: 600; padding: .25rem .8rem; border-radius: 999px; border: 1px solid var(--line); color: var(--ink-dim); background: transparent; }
+        .chip:hover { color: #fff; border-color: rgba(34,211,238,.6); }
+        .chip.is-on { background: rgba(34,211,238,.18); color: #a5f3fc; border-color: rgba(34,211,238,.65); }
+        #alert-container[data-filter="pet"] [data-kind]:not([data-kind="pet"]),
+        #alert-container[data-filter="vehicle"] [data-kind]:not([data-kind="vehicle"]),
+        #alert-container[data-filter="person"] [data-kind]:not([data-kind="person"]) { display: none; }
+        #alert-container.filter-empty::after { content: attr(data-empty); margin-top: 4rem; text-align: center; color: var(--ink-dim); font-size: 14px; }
+        .legend-dot { display: inline-block; width: .65rem; height: .65rem; border-radius: 50%; margin-right: .4rem; vertical-align: -1px; }
+
+        /* ===== Resident mode: no map, cameras, alerts or staff controls. Just the Lost Pet Register. ===== */
+        body.resident-mode main, body.resident-mode #alert-drawer, body.resident-mode #right-col, body.resident-mode #bottom-nav,
+        body.resident-mode #hud-stats, body.resident-mode .staff-only, body.resident-mode #scan-layer,
+        body.resident-mode #grid-view, body.resident-mode #history-view, body.resident-mode #residents-view,
+        body.resident-mode #detail-view, body.resident-mode .owner-field { display: none !important; }
+        body:not(.resident-mode) .resident-only { display: none !important; }
+        body.resident-mode #lost-pet-view { left: .75rem; right: .75rem; bottom: .75rem; align-items: flex-start; justify-content: center; overflow-y: auto; padding-top: .5rem; }
+        .pw-wrap { position: relative; }
+        .pw-wrap .f-input { padding-right: 3.2rem; }
+        .pw-toggle { position: absolute; right: .35rem; top: 50%; transform: translateY(-50%); font-size: 11px; font-family: 'Share Tech Mono', monospace; color: #67e8f9; padding: .35rem .5rem; border-radius: .35rem; }
+        .pw-toggle:hover { background: rgba(34,211,238,.15); }
+        .pet-row { display: flex; align-items: center; gap: .75rem; padding: .5rem; border: 1px solid var(--line); border-radius: .5rem; background: rgba(15,23,42,.6); }
+        .status-pill { font-size: 11.5px; font-weight: 700; padding: .1rem .55rem; border-radius: 999px; }
+        .status-missing { color: #fca5a5; background: rgba(239,68,68,.15); border: 1px solid rgba(248,113,113,.45); }
+        .status-found { color: #6ee7b7; background: rgba(16,185,129,.15); border: 1px solid rgba(52,211,153,.45); }
+
+        @media (max-width: 1023px) { .hud-btn { min-height: 40px; } .chip { padding: .4rem .9rem; } }
+        @media (prefers-reduced-motion: reduce) {
+            *, *::before, *::after { animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; }
+        }
+    </style>
+</head>
+<body class="relative h-[100dvh] w-screen overflow-hidden text-white">
+
+    <!-- TOAST NOTIFICATION CONTAINER -->
+    <div id="toast-container"></div>
+
+    <!-- BOOT OVERLAY -->
+    <div id="boot" class="fixed inset-0 z-[100] flex flex-col items-center justify-center bg-black font-data text-cyan-300 transition-opacity duration-700">
+        <div class="glitch font-hud text-3xl font-black tracking-[.4em]">SIMEGUARD</div>
+        <pre id="boot-log" class="mt-6 h-28 w-80 whitespace-pre-wrap text-xs text-cyan-400/80"></pre>
+        <button id="boot-btn" type="button" data-sfx="manual" data-i18n="boot_btn" class="hud-btn mt-4 px-6 py-2">▶ INITIALIZE</button>
+        <p data-i18n="boot_hint" class="mt-3 text-[10px] tracking-widest text-slate-500">CLICK OR PRESS ANY KEY — ENABLES AUDIO</p>
+        <button id="boot-lang" type="button" data-sfx="manual" class="hud-btn mt-4" onclick="toggleLang()">EN | BM</button>
+    </div>
+
+    <!-- LOGIN -->
+    <div id="login-view" class="fixed inset-0 z-[90] hidden items-center justify-center bg-[#02040a]/95 p-4">
+        <form id="login-form" class="hud-panel w-full max-w-sm rounded-2xl p-6" autocomplete="on">
+            <div class="glitch font-hud mb-1 text-center text-2xl font-black tracking-[.3em] text-cyan-300">SIMEGUARD</div>
+            <p data-i18n="login_sub" class="mb-5 text-center text-sm text-slate-300">Sign in to the security dashboard</p>
+            <label class="f-label" for="lg-user" data-i18n="username">Username</label>
+            <input id="lg-user" name="username" type="text" autocomplete="username" required class="f-input mb-3">
+            <label class="f-label" for="lg-pass" data-i18n="password">Password</label>
+            <div class="pw-wrap mb-3">
+                <input id="lg-pass" name="password" type="password" autocomplete="current-password" required class="f-input">
+                <button type="button" class="pw-toggle" data-sfx="manual" data-pw="lg-pass" data-i18n="pw_show">Show</button>
+            </div>
+            <label class="mb-3 flex cursor-pointer items-center gap-2 text-sm text-slate-300">
+                <input id="lg-remember" type="checkbox" class="h-4 w-4 accent-cyan-400">
+                <span data-i18n="remember">Keep me signed in on this device</span>
+            </label>
+            <p id="login-msg" class="mb-2 min-h-[1.25rem] text-center text-sm text-red-400" role="alert"></p>
+            <button id="login-btn" type="submit" class="f-submit" data-i18n="sign_in">SIGN IN</button>
+            <button type="button" class="hud-btn mx-auto mt-4 block" onclick="toggleLang()">EN | BM</button>
+        </form>
+    </div>
+
+    <!-- SCREEN FLASH -->
+    <div id="alert-flash" class="pointer-events-none fixed inset-0 z-[60]"></div>
+
+    <!-- LEAFLET MAP CONTAINER -->
+    <main class="absolute inset-x-0 top-0 bottom-[44%] z-[2] flex items-center justify-center px-3 pb-2 pt-[4.8rem] lg:bottom-0 lg:pb-24 lg:pl-[26rem] lg:pr-[20rem]">
+        <div id="map-frame" class="neon-frame relative w-full h-full rounded-lg overflow-hidden flex items-center justify-center">
+            
+            <!-- Background layers placed BEHIND Leaflet so they do not block lines -->
+            <div class="map-tint absolute inset-0 z-0 pointer-events-none"></div>
+            <div class="map-grid absolute inset-0 z-[1] pointer-events-none"></div>
+
+            <!-- Leaflet Engine -->
+            <div id="leaflet-map" class="absolute inset-0 z-10 bg-transparent"></div>
+            
+            <!-- Scan effect stays on top but passes clicks through -->
+            <div id="scan-layer" class="pointer-events-none absolute inset-0 z-[15] hidden overflow-hidden">
+                <div class="scanlines absolute inset-0 pointer-events-none"></div>
+                <div class="scanbeam pointer-events-none"></div>
+            </div>
+
+            <div class="pointer-events-none absolute bottom-2 left-2 z-20 flex flex-wrap gap-x-4 gap-y-1 rounded-md bg-slate-950/85 px-3 py-1.5 text-[13px] text-slate-200">
+                <span><i class="legend-dot" style="background:#34d399"></i><span data-i18n="lg_online">No alert</span></span>
+                <span><i class="legend-dot legend-alert" style="background:#ef4444">!</i><span data-i18n="lg_alert">Active alert</span></span>
+                <span data-i18n="lg_click" class="hidden sm:inline text-slate-400">Click a dot to open its feed</span>
+            </div>
+        </div>
+    </main>
+
+    <!-- TOP HUD STATUS BAR -->
+    <header class="hud-panel absolute left-3 right-3 top-2 z-30 flex h-14 items-center justify-between gap-2 overflow-x-auto rounded-xl px-3">
+        <div class="flex items-center gap-3 shrink-0 whitespace-nowrap">
+            <span class="glitch font-hud text-lg font-black tracking-[.2em] text-cyan-300">SIMEGUARD</span>
+            <span data-i18n="hud_tag" class="font-data hidden text-[10px] tracking-widest text-slate-400 2xl:inline">AI SECURITY NETWORK</span>
+        </div>
+
+        <div id="hud-stats" class="flex items-center gap-2 shrink-0 overflow-x-auto">
+            <div class="hud-stat"><span data-i18n="hud_threat" class="hud-label">THREAT LEVEL</span><span id="hud-threat" class="hud-value text-emerald-400">SECURE</span></div>
+            <div class="hud-stat"><span data-i18n="hud_nodes" class="hud-label">CAMERAS</span><span id="hud-nodes" class="hud-value text-cyan-200">8</span></div>
+            <div id="hud-alerts-container" class="hud-stat"><span data-i18n="hud_active" class="hud-label text-slate-300">ACTIVE ALERTS</span><span id="hud-alerts" class="hud-value text-cyan-200">00</span></div>
+            <div class="hud-stat hidden md:block"><span data-i18n="hud_latency" class="hud-label">LATENCY</span><span id="hud-latency" class="hud-value text-cyan-200">-- ms</span></div>
+            <div class="hud-stat hidden md:block"><span data-i18n="hud_backend" class="hud-label">BACKEND</span><span id="hud-link" class="hud-value text-slate-300">LINKING</span></div>
+
+            <div class="hud-stat hidden xl:block">
+                <span class="hud-label"><span data-i18n="hud_load">AI LOAD</span> <span id="val-load" class="text-cyan-200">--</span></span>
+                <div class="mt-1.5 h-1.5 w-20 overflow-hidden rounded bg-slate-800"><div id="bar-load" class="h-full bg-cyan-400 transition-all duration-700" style="width:0%"></div></div>
+            </div>
+            <div class="hud-stat hidden xl:block">
+                <span class="hud-label"><span data-i18n="hud_bw">BANDWIDTH</span> <span id="val-net" class="text-fuchsia-200">--</span></span>
+                <div class="mt-1.5 h-1.5 w-20 overflow-hidden rounded bg-slate-800"><div id="bar-net" class="h-full bg-fuchsia-400 transition-all duration-700" style="width:0%"></div></div>
+            </div>
+            <div class="hud-stat hidden 2xl:block"><span data-i18n="hud_uptime" class="hud-label">UPTIME</span><span id="hud-uptime" class="hud-value text-cyan-200">00:00:00</span></div>
+            <div class="hud-stat hidden lg:block"><span class="hud-label" id="hud-date">DATE</span><span id="hud-clock" class="hud-value text-cyan-200">00:00:00</span></div>
+        </div>
+
+        <div class="flex items-center gap-1.5 shrink-0 ml-auto">
+            <button id="btn-sound" type="button" data-sfx="manual" class="hud-btn staff-only">🔊 SFX</button>
+            <button id="btn-siren" type="button" data-sfx="manual" class="hud-btn staff-only">🚨 SIREN</button>
+            <button id="btn-voice" type="button" data-sfx="manual" data-i18n="btn_voice" class="hud-btn staff-only">🗣 VOICE</button>
+            <button id="btn-traj" type="button" data-sfx="manual" data-i18n="btn_traj" class="hud-btn staff-only">⟿ TRAJ</button>
+            <button id="btn-scan" type="button" data-sfx="manual" data-i18n="btn_scan" class="hud-btn staff-only">▤ SCAN</button>
+            <button id="btn-reset" type="button" data-sfx="manual" data-i18n="btn_reset" onclick="resetDatabase()" class="hud-btn hud-btn-danger hidden">RESET</button>
+            <button id="btn-lang" type="button" data-sfx="manual" class="hud-btn" onclick="toggleLang()">EN | BM</button>
+            <button id="btn-user" type="button" data-sfx="manual" class="hud-btn hidden" onclick="openAccount()"></button>
+        </div>
+    </header>
+
+    <!-- LEFT SIDEBAR: LIVE AI ALERTS -->
+    <!-- Phone: swipe-up bottom drawer. Desktop: fixed left sidebar. -->
+    <aside id="alert-drawer" class="hud-panel fixed inset-x-2 bottom-16 z-30 flex h-[68vh] translate-y-[calc(100%-3.25rem)] flex-col rounded-xl p-4 pt-2 transition-transform duration-300 data-[open]:translate-y-0 lg:absolute lg:inset-auto lg:bottom-20 lg:left-3 lg:top-[4.8rem] lg:h-auto lg:w-96 lg:translate-y-0 lg:pt-4">
+        <div id="drawer-handle" class="mx-auto mb-2 h-1.5 w-12 shrink-0 cursor-pointer rounded-full bg-cyan-400/50 lg:hidden"></div>
+        <div id="drawer-header" class="mb-3 flex items-center justify-between border-b border-cyan-400/20 pb-3">
+            <h2 class="font-hud flex items-center gap-2 text-[11px] font-bold uppercase tracking-widest text-red-400">
+                <span class="relative flex h-2.5 w-2.5">
+                    <span class="absolute inline-flex h-full w-full animate-ping rounded-full bg-red-400 opacity-75"></span>
+                    <span class="relative inline-flex h-2.5 w-2.5 rounded-full bg-red-500"></span>
+                </span>
+                <span data-i18n="feed_title">Live AI Alerts Feed</span>
+            </h2>
+            <span data-i18n="feed_hint" class="font-data hidden text-[10px] tracking-widest text-slate-400 lg:inline">Click a card for details</span><span id="drawer-count" class="font-data text-[11px] text-red-300 lg:hidden">0 ACTIVE · TAP OR SWIPE</span>
+        </div>
+        <!-- Phones: the target tracker lives here as a second tab (on desktop it has its own panel) -->
+        <div id="drawer-tabs" class="mb-3 flex shrink-0 gap-1.5 lg:hidden" role="tablist">
+            <button type="button" id="dtab-alerts" role="tab" aria-selected="true" class="chip is-on flex-1" data-dtab="alerts" data-i18n="tab_alerts">🚨 Alerts</button>
+            <button type="button" id="dtab-tracker" role="tab" aria-selected="false" class="chip flex-1" data-dtab="tracker"><span data-i18n="tab_tracker">⟿ Tracker</span> <span id="traj-count-m" class="font-data"></span></button>
+        </div>
+        <div id="alert-filters" class="mb-3 flex shrink-0 flex-wrap gap-1.5" role="group" aria-label="Filter alerts">
+            <button type="button" class="chip is-on" data-filter="all" data-i18n="f_all">All</button>
+            <button type="button" class="chip" data-filter="person" data-i18n="f_people">🕵️ People</button>
+            <button type="button" class="chip" data-filter="vehicle" data-i18n="f_vehicles">🚗 Vehicles</button>
+            <button type="button" class="chip" data-filter="pet" data-i18n="f_pets">🐾 Pets</button>
+            <button type="button" id="btn-clear-old" class="chip hidden" onclick="clearOldAlerts()"></button>
+        </div>
+        <div id="alert-container" class="flex flex-1 flex-col gap-3 overflow-y-auto pr-1">
+            <p data-i18n="waiting" class="font-data mt-20 text-center text-sm text-slate-400">Waiting for AI data stream...</p>
+        </div>
+        <div id="tracker-pane" class="hidden min-h-0 flex-1 flex-col overflow-hidden">
+            <p data-i18n="trk_hint" class="font-data mb-2 text-[10px] text-slate-400">Tap to lock a target on the map</p>
+            <div id="traj-legend-m" class="font-data min-h-0 flex-1 overflow-y-auto text-xs"></div>
+        </div>
+    </aside>
+
+    <!-- RIGHT COLUMN: CCTV + TARGET TRACKER -->
+    <aside id="right-col" class="absolute inset-x-3 bottom-[7.5rem] top-[57%] z-20 flex flex-col gap-3 lg:inset-x-auto lg:bottom-20 lg:right-3 lg:top-[4.8rem] lg:w-72">
+        <section class="hud-panel rounded-xl p-3">
+            <div class="mb-2 flex items-center justify-between">
+                <h3 data-i18n="cctv_title" class="font-hud text-[11px] font-bold tracking-widest text-cyan-300">CCTV FEED</h3>
+                <div class="flex gap-1">
+                    <button id="cam-prev" type="button" class="hud-btn !px-2 !py-1">◀</button>
+                    <button id="cam-next" type="button" class="hud-btn !px-2 !py-1">▶</button>
+                </div>
+            </div>
+            <div class="mx-auto max-w-[17rem] overflow-hidden rounded border border-cyan-400/40 bg-black shadow-[0_0_14px_rgba(34,211,238,.25)] lg:max-w-none">
+                <canvas id="cctv-canvas" width="320" height="180" class="block w-full"></canvas>
+            </div>
+            <div class="font-data mt-2 flex justify-between text-[11px]">
+                <span id="cctv-name" class="text-slate-200">CAM-01</span>
+                <span id="cctv-status" class="text-emerald-400">● CLEAR</span>
+            </div>
+            <p data-i18n="cctv_tip" class="font-data mt-1 hidden text-[10px] text-slate-400 lg:block">Tip: hover a camera dot for a live preview, click to switch feed</p>
+        </section>
+
+        <section class="hud-panel hidden min-h-0 flex-1 flex-col rounded-xl p-3 lg:flex">
+            <h3 class="font-hud text-[11px] font-bold tracking-widest text-cyan-300"><span data-i18n="trk_title">TARGET TRACKER</span> <span id="traj-count" class="font-data text-cyan-200/70"></span></h3>
+            <p data-i18n="trk_hint2" class="font-data mt-1 text-[10px] text-slate-400">Hover to highlight · click to lock</p>
+            <div id="traj-legend" class="font-data mt-2 flex-1 overflow-y-auto text-xs"></div>
+        </section>
+    </aside>
+
+    <!-- BOTTOM NAV -->
+    <nav id="bottom-nav" class="hud-panel absolute bottom-3 left-1/2 z-50 flex max-w-[calc(100vw-1rem)] -translate-x-1/2 items-center gap-2 overflow-x-auto rounded-full px-4 py-1.5">
+        <button id="dashboard-tab" type="button" data-i18n="nav_map" class="whitespace-nowrap rounded-full bg-blue-600 px-3 py-1.5 text-xs font-semibold lg:px-5 transition hover:bg-blue-500" onclick="showView('dashboard')">🗺️ Live Map</button>
+        <button id="history-tab" type="button" data-i18n="nav_history" class="whitespace-nowrap rounded-full px-3 py-1.5 text-xs font-semibold lg:px-5 text-gray-300 transition hover:bg-gray-800 hover:text-white" onclick="showView('history')">📜 History</button>
+        <button id="lost-pet-tab" type="button" data-i18n="nav_pet" class="whitespace-nowrap rounded-full px-3 py-1.5 text-xs font-semibold lg:px-5 text-gray-300 transition hover:bg-gray-800 hover:text-white" onclick="showView('lost-pet')">🐾 Lost Pet Register</button>
+        <button id="residents-tab" type="button" data-i18n="nav_res" class="whitespace-nowrap rounded-full px-3 py-1.5 text-xs font-semibold lg:px-5 text-gray-300 transition hover:bg-gray-800 hover:text-white" onclick="showView('residents')">👥 Residents</button>
+        <button id="grid-tab" type="button" data-i18n="nav_grid" class="whitespace-nowrap rounded-full px-3 py-1.5 text-xs font-semibold lg:px-5 text-gray-300 transition hover:bg-gray-800 hover:text-white" onclick="showView('grid')">▦ Camera Grid</button>
+    </nav>
+
+    <!-- LOST PET PANEL -->
+    <div id="lost-pet-view" class="pointer-events-none absolute bottom-20 left-3 right-3 top-[4.8rem] z-[35] hidden items-center justify-center lg:left-[26rem] lg:right-[20rem]">
+        <div class="pointer-events-auto flex max-h-full w-full max-w-lg flex-col overflow-hidden rounded-2xl border border-cyan-400/40 bg-slate-950/95 shadow-[0_0_40px_rgba(0,0,0,.8),0_0_24px_rgba(34,211,238,.18)]">
+            <div class="flex shrink-0 items-start justify-between gap-3 border-b border-cyan-400/20 px-5 py-4">
+                <div>
+                    <h2 data-i18n="pet_title" class="font-hud text-base font-bold tracking-wider text-yellow-300">🐾 Register a Lost Pet</h2>
+                    <p id="pet-sub" data-i18n="pet_sub" class="mt-1 text-xs leading-snug text-slate-300">Only registered residents can report. Enter your name and phone to verify.</p>
+                </div>
+                <button type="button" onclick="showView('dashboard')" class="staff-only rounded px-2 text-lg font-bold leading-none text-slate-300 hover:text-white" aria-label="Close">✕</button>
+            </div>
+            <form id="lost-pet-form" class="grid grid-cols-2 gap-x-3 gap-y-3 overflow-y-auto px-5 py-4">
+                <div class="f-section col-span-2" data-i18n="pf_s1">01 · OWNER</div>
+                <p id="reporting-as" class="resident-only col-span-2 rounded-lg border border-cyan-400/30 bg-cyan-400/5 px-3 py-2 text-sm text-cyan-100"></p>
+                <div class="owner-field">
+                    <label class="f-label" for="pf-name" data-i18n="pf_owner">Owner name</label>
+                    <input id="pf-name" name="name" type="text" autocomplete="name" required data-i18n-ph="pf_owner_ph" placeholder="e.g. Ahmad Faiz" class="f-input">
+                </div>
+                <div class="owner-field">
+                    <label class="f-label" for="pf-phone" data-i18n="pf_phone">Phone number</label>
+                    <input id="pf-phone" name="phone" type="tel" autocomplete="tel" required maxlength="15" placeholder="e.g. 012-3456789" class="f-input">
+                </div>
+                <p id="owner-verify" class="owner-field font-data col-span-2 min-h-[1.25rem] text-xs"></p>
+                <div class="col-span-2">
+                    <label class="f-label" for="pf-unit" data-i18n="pf_unit">Unit number</label>
+                    <input id="pf-unit" name="unit_number" type="text" readonly data-i18n-ph="pf_unit_ph" placeholder="Auto-filled after verification" class="f-input">
+                </div>
+                <div class="f-section col-span-2 mt-1" data-i18n="pf_s2">02 · PET</div>
+                <div>
+                    <label class="f-label" for="pf-pet" data-i18n="pf_pet">Pet name</label>
+                    <input id="pf-pet" name="pet_name" type="text" required data-i18n-ph="pf_pet_ph" placeholder="e.g. Buddy" class="f-input">
+                </div>
+                <div>
+                    <label class="f-label" for="pf-species" data-i18n="pf_species">Species / breed</label>
+                    <input id="pf-species" name="species" type="text" required data-i18n-ph="pf_species_ph" placeholder="e.g. Beagle, Tabby Cat" class="f-input">
+                </div>
+                <div class="f-section col-span-2 mt-1" data-i18n="pf_s3">03 · LAST SEEN</div>
+                <div class="col-span-2">
+                    <label class="f-label" for="pet-location" data-i18n="pf_cam">Camera location</label>
+                    <div class="flex gap-2">
+                        <select id="pet-location" name="last_seen_location" required class="f-input min-w-0 flex-1">
+                            <option value="Main Gate">Main Gate</option>
+                            <option value="Side Gate">Side Gate</option>
+                            <option value="Community Park">Community Park</option>
+                            <option value="Lorong 1">Lorong 1</option>
+                            <option value="Lorong 2">Lorong 2</option>
+                            <option value="Lorong 3">Lorong 3</option>
+                            <option value="Lorong 4 West">Lorong 4 West</option>
+                            <option value="Lorong 4 East">Lorong 4 East</option>
+                        </select>
+                        <button type="button" id="use-cctv-cam" data-sfx="manual" data-i18n="pf_usecam" class="staff-only hud-btn h-10 shrink-0">📹 USE CCTV</button>
+                    </div>
+                </div>
+                <div class="col-span-2">
+                    <label class="f-label" for="pf-photo" data-i18n="pf_photo">Pet photo (optional)</label>
+                    <label for="pf-photo" class="flex cursor-pointer items-center gap-3 rounded-lg border border-dashed border-slate-600 bg-slate-950/80 p-2.5 transition hover:border-cyan-400">
+                        <img id="photo-preview" alt="" class="hidden h-12 w-12 shrink-0 rounded-md border border-cyan-400/40 object-cover">
+                        <span id="photo-name" class="font-data truncate text-xs text-slate-300">📷 Click to upload a photo</span>
+                    </label>
+                    <input id="pf-photo" name="pet_photo" type="file" accept="image/*" class="sr-only">
+                </div>
+                <div class="col-span-2 mt-1">
+                    <button id="register-pet-button" type="submit" class="f-submit" data-i18n="pf_submit">Submit Lost Pet Report</button>
+                    <p id="registration-message" class="mt-2 min-h-[1.25rem] text-center text-sm" role="status" aria-live="polite"></p>
+                </div>
+                <div class="resident-only col-span-2 mt-1">
+                    <div class="f-section mb-2" data-i18n="my_reports">MY REPORTS</div>
+                    <div id="my-pets" class="grid gap-2"></div>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- RESIDENTS TABLE -->
+    <div id="residents-view" class="pointer-events-none absolute bottom-20 left-3 right-3 top-[4.8rem] z-[35] hidden items-center justify-center lg:left-[26rem] lg:right-[20rem]">
+        <div class="hud-panel pointer-events-auto flex max-h-full w-full max-w-4xl flex-col rounded-2xl p-5">
+            <div class="mb-3 flex items-center justify-between gap-3">
+                <h2 data-i18n="res_title" class="font-hud text-lg font-bold tracking-wider text-cyan-300">Registered Residents</h2>
+                <input id="res-search" type="search" data-i18n-ph="res_search" placeholder="Search name / phone / unit" class="font-data w-56 rounded border border-gray-600 bg-gray-950 px-3 py-1.5 text-xs text-white focus:border-cyan-400 focus:outline-none">
+                <button type="button" onclick="showView('dashboard')" class="px-2 text-lg font-bold text-gray-300 hover:text-white">✕</button>
+            </div>
+            <div class="min-h-0 flex-1 overflow-auto rounded border border-cyan-400/20">
+                <table class="font-data w-full text-left text-xs">
+                    <thead class="sticky top-0 bg-gray-950 text-cyan-300">
+                        <tr><th class="px-2 py-2">ID</th><th class="px-2" data-i18n="rh_name">NAME</th><th class="px-2" data-i18n="rh_phone">PHONE</th><th class="px-2" data-i18n="rh_unit">UNIT</th><th class="px-2" data-i18n="rh_reg">REGISTERED</th><th class="px-2" data-i18n="rh_pet">PET STATUS</th><th class="px-2"></th></tr>
+                    </thead>
+                    <tbody id="res-body"></tbody>
+                </table>
+            </div>
+            <form id="res-form" class="mt-3 hidden grid-cols-2 gap-2 sm:grid-cols-4">
+                <input name="name" data-i18n-ph="rf_name" placeholder="Name" required class="rounded border border-gray-600 bg-gray-950 px-2 py-1.5 text-xs text-white">
+                <input name="phone" data-i18n-ph="rf_phone" placeholder="Phone" required maxlength="15" class="rounded border border-gray-600 bg-gray-950 px-2 py-1.5 text-xs text-white">
+                <select name="unit_number" required class="rounded border border-gray-600 bg-gray-950 px-2 py-1.5 text-xs text-white"><option value="" data-i18n="rf_unit">Unit</option></select>
+                <button class="hud-btn" type="submit" data-i18n="rf_add">+ ADD RESIDENT</button>
+            </form>
+            <p id="res-msg" class="font-data mt-2 text-xs text-slate-300"></p>
+        </div>
+    </div>
+
+    <!-- MULTI-CAMERA GRID -->
+    <div id="grid-view" class="hud-panel absolute inset-x-3 bottom-20 top-[4.8rem] z-[36] hidden flex-col rounded-xl p-3">
+        <div class="mb-2 flex shrink-0 items-center justify-between gap-3">
+            <h2 class="font-hud text-sm font-bold tracking-wider text-cyan-300"><span data-i18n="grid_title">CAMERA GRID</span> <span data-i18n="grid_sub" class="font-data text-[10px] text-slate-400">· ALL FEEDS · CLICK ONE TO OPEN</span></h2>
+            <button type="button" onclick="showView('dashboard')" class="px-2 text-lg font-bold text-gray-300 hover:text-white" aria-label="Close">✕</button>
+        </div>
+        <div id="grid-body" class="grid min-h-0 flex-1 grid-cols-2 content-start gap-2 overflow-y-auto lg:grid-cols-4"></div>
+    </div>
+
+    <!-- ALERT HISTORY (every alert, open and resolved: who resolved it and when) -->
+    <div id="history-view" class="hud-panel absolute inset-x-3 bottom-20 top-[4.8rem] z-[36] hidden flex-col rounded-xl p-3">
+        <div class="mb-2 flex shrink-0 items-center justify-between gap-3">
+            <h2 class="font-hud text-sm font-bold tracking-wider text-cyan-300" data-i18n="hist_title">ALERT HISTORY</h2>
+            <button type="button" onclick="showView('dashboard')" class="px-2 text-lg font-bold text-gray-300 hover:text-white" aria-label="Close">✕</button>
+        </div>
+        <form id="hist-filters" class="mb-2 grid shrink-0 grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-[1fr_auto_auto_auto_auto_auto_auto]">
+            <input id="h-q" type="search" data-i18n-ph="hist_search" placeholder="Search location, plate, pet…" class="f-input col-span-2 !h-9 sm:col-span-3 lg:col-span-1">
+            <select id="h-type" class="f-input !h-9"></select>
+            <select id="h-status" class="f-input !h-9"></select>
+            <label class="font-data flex items-center gap-1 text-[11px] text-slate-300"><span data-i18n="hist_from">From</span><input id="h-from" type="date" class="f-input !h-9 !px-2"></label>
+            <label class="font-data flex items-center gap-1 text-[11px] text-slate-300"><span data-i18n="hist_to">To</span><input id="h-to" type="date" class="f-input !h-9 !px-2"></label>
+            <button type="button" id="h-clear" class="hud-btn" data-i18n="hist_clear">CLEAR</button>
+            <button type="button" id="h-csv" class="hud-btn" data-i18n="hist_csv">⬇ CSV</button>
+        </form>
+        <div class="min-h-0 flex-1 overflow-auto rounded border border-cyan-400/20">
+            <table class="font-data w-full min-w-[44rem] text-left text-xs">
+                <thead class="sticky top-0 bg-gray-950 text-cyan-300">
+                    <tr><th class="px-2 py-2" data-i18n="hh_time">TIME</th><th class="px-2" data-i18n="hh_type">TYPE</th><th class="px-2" data-i18n="hh_loc">LOCATION</th><th class="px-2" data-i18n="hh_detail">DETAIL</th><th class="px-2" data-i18n="hh_status">STATUS</th><th class="px-2" data-i18n="hh_by">RESOLVED BY</th><th class="px-2" data-i18n="hh_at">RESOLVED AT</th></tr>
+                </thead>
+                <tbody id="hist-body"></tbody>
+            </table>
+        </div>
+        <div class="font-data mt-2 flex shrink-0 items-center justify-between text-xs text-slate-300">
+            <span id="hist-count"></span>
+            <span class="flex gap-1.5"><button type="button" id="h-prev" class="hud-btn">◀</button><button type="button" id="h-next" class="hud-btn">▶</button></span>
+        </div>
+    </div>
+
+    <!-- ACCOUNT MODAL: change own password; admins can also create logins -->
+    <div id="account-view" class="absolute inset-0 z-[56] hidden items-center justify-center bg-black/60 p-4 backdrop-blur-sm" onmousedown="if (event.target === this) closeAccount()">
+        <div class="hud-panel flex max-h-[88vh] w-full max-w-md flex-col overflow-y-auto rounded-2xl p-5">
+            <div class="mb-3 flex items-center justify-between">
+                <h2 class="font-hud text-base font-bold tracking-wider text-cyan-300" id="acc-title"></h2>
+                <button type="button" onclick="closeAccount()" class="px-2 text-lg font-bold text-gray-300 hover:text-white" aria-label="Close">✕</button>
+            </div>
+            <form id="pw-form" class="grid gap-2">
+                <div class="f-section" data-i18n="acc_pw">CHANGE PASSWORD</div>
+                <input name="old_password" type="password" autocomplete="current-password" required data-i18n-ph="acc_old" placeholder="Current password" class="f-input">
+                <input name="new_password" type="password" autocomplete="new-password" minlength="8" required data-i18n-ph="acc_new" placeholder="New password (min 8 characters)" class="f-input">
+                <button type="submit" class="hud-btn" data-i18n="acc_save">SAVE PASSWORD</button>
+            </form>
+            <form id="user-form" class="mt-4 hidden gap-2">
+                <div class="f-section" data-i18n="acc_new_user">NEW LOGIN</div>
+                <input name="username" required data-i18n-ph="username" placeholder="Username" class="f-input" autocomplete="off">
+                <input name="password" type="password" minlength="8" required data-i18n-ph="acc_new" placeholder="Password (min 8 characters)" class="f-input" autocomplete="new-password">
+                <select name="role" class="f-input"><option value="guard">Guard</option><option value="admin">Admin</option><option value="resident">Resident</option></select>
+                <select name="resident_id" class="f-input hidden" aria-label="Resident"></select>
+                <button type="submit" class="hud-btn" data-i18n="acc_create">CREATE LOGIN</button>
+            </form>
+            <p id="acc-msg" class="font-data mt-3 min-h-[1.25rem] text-xs text-slate-300" role="status"></p>
+            <button type="button" onclick="logout()" class="hud-btn hud-btn-danger mt-2" data-i18n="acc_logout">SIGN OUT</button>
+        </div>
+    </div>
+
+    <!-- ALERT DETAILS MODAL -->
+    <div id="detail-view" class="absolute inset-0 z-[55] hidden items-center justify-center bg-black/60 p-4 backdrop-blur-sm" onmousedown="if (event.target === this) closeDetails()">
+        <div class="hud-panel flex max-h-[85vh] w-full max-w-md flex-col overflow-hidden rounded-2xl p-5">
+            <div class="mb-3 flex shrink-0 items-center justify-between">
+                <h2 id="dt-title" class="font-hud text-base font-bold tracking-wider"></h2>
+                <button type="button" onclick="closeDetails()" class="px-2 text-lg font-bold text-gray-300 hover:text-white">✕</button>
+            </div>
+            <div id="dt-scroll" class="min-h-0 flex-1 overflow-y-auto overscroll-contain pr-1" style="max-height:calc(85vh - 5rem)">
+                <img id="dt-img" alt="" class="mb-3 h-auto w-full rounded-lg border border-cyan-400/30 bg-black object-contain">
+                <div id="dt-rows" class="font-data space-y-1.5 text-xs"></div>
+            </div>
+        </div>
+    </div>
+
+<script>
+// Served by the backend (http://host/dashboard) -> same origin. Opened as a file -> local dev server.
+const API_BASE = location.protocol.startsWith("http") ? `${location.origin}/api` : "http://127.0.0.1:8000/api";
+const $ = id => document.getElementById(id);
+const clamp = (v, a, b) => Math.min(Math.max(v, a), b);
+const pad2 = n => String(n).padStart(2, "0");
+
+// ==========================================
+// LANGUAGE (English / Bahasa Melayu)
+// ==========================================
+const I18N = {
+  en: {
+    boot_btn: "▶ INITIALIZE", boot_hint: "CLICK OR PRESS ANY KEY — ENABLES AUDIO",
+    login_sub: "Sign in to the security dashboard", username: "Username", password: "Password", sign_in: "SIGN IN",
+    login_wrong: "Wrong username or password.", signing_in: "Signing in…",
+    pw_show: "Show", pw_hide: "Hide", remember: "Keep me signed in on this device",
+    my_reports: "MY REPORTS", reporting_as: "Reporting as {n} · {u}", no_reports: "You have not reported any pets yet.",
+    st_missing: "Missing", st_found: "Found", role_resident: "Resident", acc_pick: "Select resident…",
+    idle_logout: "You were signed out after 15 minutes of inactivity.",
+    lg_online: "No alert", lg_alert: "Active alert", lg_click: "Click a dot to open its feed",
+    hud_tag: "AI SECURITY NETWORK", hud_threat: "THREAT LEVEL", hud_nodes: "CAMERAS", hud_active: "ACTIVE ALERTS",
+    hud_latency: "LATENCY", hud_backend: "BACKEND", hud_load: "LAST HOUR", hud_bw: "OLDEST OPEN", hud_uptime: "UPTIME",
+    th_secure: "SECURE", th_guarded: "GUARDED", th_elevated: "ELEVATED", th_high: "HIGH", th_critical: "CRITICAL",
+    link_live: "LIVE", link_poll: "POLLING", link_off: "OFFLINE",
+    btn_sfx: "SFX", btn_siren: "SIREN", btn_voice: "🗣 VOICE", btn_traj: "⟿ TRAJ", btn_scan: "▤ SCAN", btn_reset: "RESET",
+    feed_title: "Live AI Alerts Feed", feed_hint: "Click a card for details",
+    drawer_count: "{n} ACTIVE · TAP OR SWIPE", tab_alerts: "🚨 Alerts", tab_tracker: "⟿ Tracker",
+    f_all: "All", f_people: "🕵️ People", f_vehicles: "🚗 Vehicles", f_pets: "🐾 Pets",
+    waiting: "Waiting for AI data stream...", no_alerts: "No active alerts. Area secure.",
+    filter_empty: "No alerts in this category.", load_fail: "Could not load alerts: {m}",
+    cctv_title: "CCTV FEED", cctv_tip: "Tip: hover a camera dot for a live preview, click to switch feed",
+    cctv_clear: "● CLEAR", cctv_alerts: "⚠ {n} ALERT(S)", cctv_click: "Click to view CCTV",
+    cam_online: "● No active alert", cam_alert: "⚠ Active Alert!",
+    trk_title: "TARGET TRACKER", trk_hint: "Tap to lock a target on the map", trk_hint2: "Hover to highlight · click to lock",
+    trk_none: "No tracked targets.", seen: "seen",
+    nav_map: "🗺️ Live Map", nav_history: "📜 History", nav_pet: "🐾 Lost Pet Register", nav_res: "👥 Residents", nav_grid: "▦ Camera Grid",
+    pet_title: "🐾 Register a Lost Pet", pet_sub: "Only registered residents can report. Enter your name and phone to verify.",
+    pf_s1: "01 · OWNER", pf_s2: "02 · PET", pf_s3: "03 · LAST SEEN", pf_owner: "Owner name", pf_owner_ph: "e.g. Ahmad Faiz",
+    pf_phone: "Phone number", pf_unit: "Unit number", pf_unit_ph: "Auto-filled after verification",
+    pf_pet: "Pet name", pf_pet_ph: "e.g. Buddy", pf_species: "Species / breed", pf_species_ph: "e.g. Beagle, Tabby Cat",
+    pet_sub_res: "Tell us where your pet was last seen. Security will be alerted straight away.",
+    pf_cam: "Last seen area", pf_usecam: "📹 USE CCTV", pf_photo: "Pet photo (optional)", pf_photo_hint: "📷 Click to upload a photo",
+    pf_submit: "Submit Lost Pet Report", pf_submitting: "Submitting...",
+    pf_verified: "✔ Verified resident · {u}", pf_ok: "Lost pet report submitted! Added to live feed.",
+    pf_toast: "Lost pet report registered and added to live feed!", pf_fail: "Could not submit report: {m}", pf_fail_t: "Registration failed: {m}",
+    res_title: "Registered Residents", res_search: "Search name / phone / unit", rh_name: "NAME", rh_phone: "PHONE", rh_unit: "UNIT",
+    rh_reg: "REGISTERED", rh_pet: "PET STATUS", rf_name: "Name", rf_phone: "Phone", rf_unit: "Unit", rf_add: "+ ADD RESIDENT",
+    res_count: "{n} residents", res_added: "Resident added.", res_toast: "New resident successfully registered.", res_fail: "Failed to add resident: {m}",
+    pet_missing: "⚠ {n} missing",
+    grid_title: "CAMERA GRID", grid_sub: "· ALL FEEDS · CLICK ONE TO OPEN",
+    hist_title: "ALERT HISTORY", hist_search: "Search location, plate, pet…", hist_from: "From", hist_to: "To",
+    hist_clear: "CLEAR", hist_csv: "⬇ CSV", hh_time: "TIME", hh_type: "TYPE", hh_loc: "LOCATION", hh_detail: "DETAIL",
+    hh_status: "STATUS", hh_by: "RESOLVED BY", hh_at: "RESOLVED AT", all_types: "All types", all_status: "Any status",
+    st_open: "Open", st_resolved: "Resolved", hist_none: "No alerts match these filters.", hist_range: "{a}–{b} of {n}",
+    hist_fail: "Could not load history: {m}", hist_csv_done: "CSV downloaded.",
+    acc_pw: "CHANGE PASSWORD", acc_old: "Current password", acc_new: "New password (min 8 characters)", acc_save: "SAVE PASSWORD",
+    acc_new_user: "NEW LOGIN", acc_create: "CREATE LOGIN", acc_logout: "SIGN OUT", acc_title: "{u} · {r}",
+    acc_pw_ok: "Password changed.", acc_user_ok: "Login created.", role_admin: "Admin", role_guard: "Guard",
+    resolved_ok: "Alert successfully marked as resolved.", resolve_fail: "Failed to resolve alert: {m}",
+    resolve_btn: "✓ Mark as resolved", reset_confirm: "Reset the demo? This clears all alerts, lost pets and residents.",
+    reset_ok: "System database reset successfully.", reset_fail: "Reset failed: {m}",
+    no_backend: "Cannot connect to backend at {o}. Start FastAPI server.", bad_json: "Invalid JSON response from backend (HTTP {s}).",
+    session_end: "Your session has expired. Please sign in again.",
+    sound_t: "Turn all sound effects on or off", siren_t: "Siren on new alerts", voice_t: "Read new alerts aloud",
+    traj_t: "Show or hide movement trails on the map", scan_t: "Show or hide the scan-line effect",
+    cam_prev: "Previous camera", cam_next: "Next camera", lang_t: "Switch language", user_t: "Account",
+    voice_unsupported: "Speech synthesis not supported in this browser", voice_on: "Voice alerts enabled.",
+    d_type: "Type", d_at: "Detected at", d_time: "Time", d_last: "Last seen area", d_pet: "Pet", d_unknown: "unknown",
+    d_owner: "Owner", d_phone: "Phone", d_unit: "Unit", d_plate: "Plate No.", d_noplate: "Unidentified",
+    d_first: "First seen", d_sight: "Sightings", d_pred: "🎯 AI prediction", d_route: "⏱ Exit route", d_action: "🛡️ Action",
+    d_hist: "Track History", d_eta: "⏱ Exit ETA", d_click: "Click card for full details", just_now: "Just now",
+    ago_s: "{n}s ago", ago_m: "{n}m ago", ago_h: "{n}h ago", ago_d: "{n}d ago",
+    undo: "UNDO", reopened_ok: "Alert reopened.", reopen_fail: "Could not undo: {m}",
+    clear_old: "Clear old", cleared_ok: "{n} old alert(s) closed.",
+    clear_old_confirm: "Close {n} open alert(s) older than {h} hours?\n\nLost-pet alerts are not included: resolve those by hand once the pet is found.",
+    t_suspicious_person: "SUSPICIOUS PERSON", t_unregistered_vehicle: "UNREGISTERED VEHICLE", t_lost_pet: "LOST PET",
+    t_tailgating: "TAILGATING", t_trespasser: "TRESPASSER",
+    a_first: "Target detected at {latest}. Monitor {zone} for potential movement.",
+    a_moving: "Moving from {prev} → {latest}. Dispatch patrol to intercept at {best} immediately.",
+    a_linger: "Target lingering around {latest}. Secure perimeter at {zone}.",
+    a_at_gate: " Target is at {gate}.", a_exit: " Nearest exit: {gate} in ~{eta} via {path}.",
+    or: "or", primary: "Primary",
+    v_pet: "Missing pet{name} spotted at {loc}.", v_alert: "Alert. {type} detected at {loc}.",
+    v_eta: " Estimated {eta} to reach {gate}.", v_plate: " Plate {plate}.", v_multi: "{n} new alerts. Latest: {line}",
+    sec: "{n} seconds", min: "{n} minutes",
+    boot_lines: ["> BOOTING SIMEGUARD CORE v2.6", "> LINKING EDGE AI NODES ........ OK", "> LOADING TRAJECTORY ENGINE .... OK", "> CALIBRATING CCTV ARRAY ....... OK", "> AWAITING OPERATOR INPUT_"],
+    speech: "en-US"
+  },
+  ms: {
+    boot_btn: "▶ MULAKAN", boot_hint: "KLIK ATAU TEKAN SEBARANG KEKUNCI — MENGHIDUPKAN BUNYI",
+    login_sub: "Log masuk ke papan pemuka keselamatan", username: "Nama pengguna", password: "Kata laluan", sign_in: "LOG MASUK",
+    login_wrong: "Nama pengguna atau kata laluan salah.", signing_in: "Sedang log masuk…",
+    pw_show: "Tunjuk", pw_hide: "Sorok", remember: "Kekalkan log masuk pada peranti ini",
+    my_reports: "LAPORAN SAYA", reporting_as: "Melapor sebagai {n} · {u}", no_reports: "Anda belum melaporkan sebarang haiwan.",
+    st_missing: "Hilang", st_found: "Dijumpai", role_resident: "Penduduk", acc_pick: "Pilih penduduk…",
+    idle_logout: "Anda telah dilog keluar selepas 15 minit tidak aktif.",
+    lg_online: "Kamera aktif", lg_alert: "Amaran aktif", lg_click: "Klik titik untuk buka paparan kamera",
+    hud_tag: "RANGKAIAN KESELAMATAN AI", hud_threat: "TAHAP ANCAMAN", hud_nodes: "KAMERA", hud_active: "AMARAN AKTIF",
+    hud_latency: "LATENSI", hud_backend: "PELAYAN", hud_load: "1 JAM LEPAS", hud_bw: "TERLAMA BUKA", hud_uptime: "MASA AKTIF",
+    th_secure: "SELAMAT", th_guarded: "BERJAGA-JAGA", th_elevated: "MENINGKAT", th_high: "TINGGI", th_critical: "KRITIKAL",
+    link_live: "LANGSUNG", link_poll: "BANCI", link_off: "LUAR TALIAN",
+    btn_sfx: "BUNYI", btn_siren: "SIREN", btn_voice: "🗣 SUARA", btn_traj: "⟿ TRAJEKTORI", btn_scan: "▤ IMBAS", btn_reset: "TETAP SEMULA",
+    feed_title: "Suapan Amaran AI Langsung", feed_hint: "Klik kad untuk butiran",
+    drawer_count: "{n} AKTIF · KETIK ATAU LEREK", tab_alerts: "🚨 Amaran", tab_tracker: "⟿ Penjejak",
+    f_all: "Semua", f_people: "🕵️ Orang", f_vehicles: "🚗 Kenderaan", f_pets: "🐾 Haiwan",
+    waiting: "Menunggu aliran data AI...", no_alerts: "Tiada amaran aktif. Kawasan selamat.",
+    filter_empty: "Tiada amaran dalam kategori ini.", load_fail: "Tidak dapat memuatkan amaran: {m}",
+    cctv_title: "PAPARAN CCTV", cctv_tip: "Petua: lalukan tetikus di atas titik kamera untuk pratonton, klik untuk tukar paparan",
+    cctv_clear: "● SELAMAT", cctv_alerts: "⚠ {n} AMARAN", cctv_click: "Klik untuk lihat CCTV",
+    cam_online: "● Tiada amaran aktif", cam_alert: "⚠ Amaran Aktif!",
+    trk_title: "PENJEJAK SASARAN", trk_hint: "Ketik untuk kunci sasaran pada peta", trk_hint2: "Lalukan tetikus untuk serlah · klik untuk kunci",
+    trk_none: "Tiada sasaran dijejak.", seen: "dikesan",
+    nav_map: "🗺️ Peta Langsung", nav_history: "📜 Sejarah", nav_pet: "🐾 Haiwan Hilang", nav_res: "👥 Penduduk", nav_grid: "▦ Grid Kamera",
+    pet_title: "🐾 Daftar Haiwan Hilang", pet_sub: "Hanya penduduk berdaftar boleh melapor. Masukkan nama dan telefon untuk pengesahan.",
+    pf_s1: "01 · PEMILIK", pf_s2: "02 · HAIWAN", pf_s3: "03 · LOKASI TERAKHIR", pf_owner: "Nama pemilik", pf_owner_ph: "cth. Ahmad Faiz",
+    pf_phone: "No. telefon", pf_unit: "No. unit", pf_unit_ph: "Diisi automatik selepas pengesahan",
+    pf_pet: "Nama haiwan", pf_pet_ph: "cth. Buddy", pf_species: "Spesies / baka", pf_species_ph: "cth. Beagle, Kucing Tabby",
+    pet_sub_res: "Beritahu kami di mana haiwan anda terakhir dilihat. Pengawal akan dimaklumkan segera.",
+    pf_cam: "Kawasan terakhir dilihat", pf_usecam: "📹 GUNA CCTV", pf_photo: "Gambar haiwan (pilihan)", pf_photo_hint: "📷 Klik untuk muat naik gambar",
+    pf_submit: "Hantar Laporan Haiwan Hilang", pf_submitting: "Menghantar...",
+    pf_verified: "✔ Penduduk disahkan · {u}", pf_ok: "Laporan dihantar! Ditambah ke suapan langsung.",
+    pf_toast: "Laporan haiwan hilang didaftar dan ditambah ke suapan langsung!", pf_fail: "Tidak dapat hantar laporan: {m}", pf_fail_t: "Pendaftaran gagal: {m}",
+    res_title: "Penduduk Berdaftar", res_search: "Cari nama / telefon / unit", rh_name: "NAMA", rh_phone: "TELEFON", rh_unit: "UNIT",
+    rh_reg: "TARIKH DAFTAR", rh_pet: "STATUS HAIWAN", rf_name: "Nama", rf_phone: "Telefon", rf_unit: "Unit", rf_add: "+ TAMBAH PENDUDUK",
+    res_count: "{n} penduduk", res_added: "Penduduk ditambah.", res_toast: "Penduduk baharu berjaya didaftarkan.", res_fail: "Gagal menambah penduduk: {m}",
+    pet_missing: "⚠ {n} hilang",
+    grid_title: "GRID KAMERA", grid_sub: "· SEMUA PAPARAN · KLIK UNTUK BUKA",
+    hist_title: "SEJARAH AMARAN", hist_search: "Cari lokasi, plat, haiwan…", hist_from: "Dari", hist_to: "Hingga",
+    hist_clear: "KOSONGKAN", hist_csv: "⬇ CSV", hh_time: "MASA", hh_type: "JENIS", hh_loc: "LOKASI", hh_detail: "BUTIRAN",
+    hh_status: "STATUS", hh_by: "DISELESAIKAN OLEH", hh_at: "DISELESAIKAN PADA", all_types: "Semua jenis", all_status: "Semua status",
+    st_open: "Terbuka", st_resolved: "Selesai", hist_none: "Tiada amaran sepadan dengan penapis ini.", hist_range: "{a}–{b} daripada {n}",
+    hist_fail: "Tidak dapat memuatkan sejarah: {m}", hist_csv_done: "CSV dimuat turun.",
+    acc_pw: "TUKAR KATA LALUAN", acc_old: "Kata laluan semasa", acc_new: "Kata laluan baharu (min 8 aksara)", acc_save: "SIMPAN KATA LALUAN",
+    acc_new_user: "LOG MASUK BAHARU", acc_create: "CIPTA LOG MASUK", acc_logout: "LOG KELUAR", acc_title: "{u} · {r}",
+    acc_pw_ok: "Kata laluan ditukar.", acc_user_ok: "Log masuk dicipta.", role_admin: "Pentadbir", role_guard: "Pengawal",
+    resolved_ok: "Amaran berjaya ditanda sebagai selesai.", resolve_fail: "Gagal menyelesaikan amaran: {m}",
+    resolve_btn: "✓ Tandakan selesai", reset_confirm: "Tetap semula demo? Ini memadam semua amaran, haiwan hilang dan penduduk.",
+    reset_ok: "Pangkalan data berjaya ditetapkan semula.", reset_fail: "Tetapan semula gagal: {m}",
+    no_backend: "Tidak dapat bersambung ke pelayan di {o}. Mulakan pelayan FastAPI.", bad_json: "Respons JSON tidak sah daripada pelayan (HTTP {s}).",
+    session_end: "Sesi anda telah tamat. Sila log masuk semula.",
+    sound_t: "Hidup atau matikan semua kesan bunyi", siren_t: "Siren apabila ada amaran baharu", voice_t: "Bacakan amaran baharu dengan kuat",
+    traj_t: "Tunjuk atau sembunyi laluan pergerakan pada peta", scan_t: "Tunjuk atau sembunyi kesan garis imbasan",
+    cam_prev: "Kamera sebelumnya", cam_next: "Kamera seterusnya", lang_t: "Tukar bahasa", user_t: "Akaun",
+    voice_unsupported: "Sintesis suara tidak disokong dalam pelayar ini", voice_on: "Amaran suara dihidupkan.",
+    d_type: "Jenis", d_at: "Dikesan di", d_time: "Masa", d_last: "Kawasan terakhir dilihat", d_pet: "Haiwan", d_unknown: "tidak diketahui",
+    d_owner: "Pemilik", d_phone: "Telefon", d_unit: "Unit", d_plate: "No. Plat", d_noplate: "Tidak dikenal pasti",
+    d_first: "Mula dilihat", d_sight: "Bilangan pengesanan", d_pred: "🎯 Ramalan AI", d_route: "⏱ Laluan keluar", d_action: "🛡️ Tindakan",
+    d_hist: "Sejarah Jejak", d_eta: "⏱ Anggaran keluar", d_click: "Klik kad untuk butiran penuh", just_now: "Sebentar tadi",
+    ago_s: "{n} saat lalu", ago_m: "{n} min lalu", ago_h: "{n} j lalu", ago_d: "{n} hari lalu",
+    undo: "KEMBALIKAN", reopened_ok: "Amaran dibuka semula.", reopen_fail: "Gagal membatalkan: {m}",
+    clear_old: "Kosongkan lama", cleared_ok: "{n} amaran lama ditutup.",
+    clear_old_confirm: "Tutup {n} amaran terbuka yang lebih lama daripada {h} jam?\n\nAmaran haiwan hilang tidak termasuk: selesaikan secara manual selepas haiwan ditemui.",
+    t_suspicious_person: "ORANG MENCURIGAKAN", t_unregistered_vehicle: "KENDERAAN TIDAK BERDAFTAR", t_lost_pet: "HAIWAN HILANG",
+    t_tailgating: "MENGEKORI MASUK", t_trespasser: "PENCEROBOH",
+    a_first: "Sasaran dikesan di {latest}. Pantau {zone} untuk kemungkinan pergerakan.",
+    a_moving: "Bergerak dari {prev} → {latest}. Hantar rondaan untuk memintas di {best} segera.",
+    a_linger: "Sasaran berlegar di sekitar {latest}. Kawal perimeter di {zone}.",
+    a_at_gate: " Sasaran berada di {gate}.", a_exit: " Pintu keluar terdekat: {gate} dalam ~{eta} melalui {path}.",
+    or: "atau", primary: "Utama",
+    v_pet: "Haiwan hilang{name} dikesan di {loc}.", v_alert: "Amaran. {type} dikesan di {loc}.",
+    v_eta: " Anggaran {eta} untuk sampai ke {gate}.", v_plate: " Plat {plate}.", v_multi: "{n} amaran baharu. Terkini: {line}",
+    sec: "{n} saat", min: "{n} minit",
+    boot_lines: ["> MEMULAKAN TERAS SIMEGUARD v2.6", "> MENYAMBUNG NOD AI TEPI ........ OK", "> MEMUATKAN ENJIN TRAJEKTORI .... OK", "> MENENTUKAN TATASUSUNAN CCTV ... OK", "> MENUNGGU ARAHAN OPERATOR_"],
+    speech: "ms-MY"
+  }
+};
+// Camera names are identifiers on the server, so only their display text is translated.
+const LOC_MS = { "Main Gate": "Pintu Utama", "Side Gate": "Pintu Sisi", "Community Park": "Taman Komuniti",
+                 "Lorong 4 West": "Lorong 4 Barat", "Lorong 4 East": "Lorong 4 Timur" };
+let LANG = "en";
+try { LANG = localStorage.getItem("sg-lang") || ((navigator.language || "").toLowerCase().startsWith("ms") ? "ms" : "en"); } catch {}
+if (!I18N[LANG]) LANG = "en";
+const tx = (key, vars = {}) => {
+    const s = I18N[LANG][key] ?? I18N.en[key] ?? key;
+    return typeof s === "string" ? s.replace(/\{(\w+)\}/g, (_, k) => vars[k] ?? "") : s;
+};
+const locName = n => (LANG === "ms" && LOC_MS[n]) || n;
+// predicted_next_zone arrives as "A or B" / "A (Primary) / B" built from camera names; translate each name.
+const zoneText = z => String(z || "").split(/( or | \(Primary\) \/ )/).map(p =>
+    p === " or " ? ` ${tx("or")} ` : p === " (Primary) / " ? ` (${tx("primary")}) / ` : locName(p)).join("");
+const actionText = tr => {
+    const i = tr.action_info;
+    if (!i) return tr.action_recommendation;
+    const loc = { latest: locName(i.latest), prev: locName(i.prev), best: locName(i.best), zone: zoneText(i.zone) };
+    let s = tx(i.kind === "moving" ? "a_moving" : i.kind === "linger" ? "a_linger" : "a_first", loc);
+    const r = tr.route_to_exit;
+    if (r) s += r.eta_seconds === 0 ? tx("a_at_gate", { gate: locName(r.gate) })
+        : tx("a_exit", { gate: locName(r.gate), eta: etaText(r.eta_seconds), path: r.path.map(locName).join(" → ") });
+    return s;
+};
+const etaText = s => s < 60 ? `${s} s` : `${(s / 60).toFixed(1)} min`;
+
+// ==========================================
+// AUTH (signed token from /api/login, kept in localStorage)
+// ==========================================
+// "Keep me signed in" -> localStorage (survives closing the browser); otherwise sessionStorage (ends with the tab),
+// which is the safer choice on a shared or family computer.
+let auth = null;   // { token, username, role, demo, resident: {id, name, unit_number} | null }
+for (const store of ["localStorage", "sessionStorage"]) {
+    try { const v = window[store].getItem("sg-auth"); if (v) { auth = JSON.parse(v); break; } } catch {}
+}
+function saveAuth(remember = true) {
+    for (const store of ["localStorage", "sessionStorage"]) { try { window[store].removeItem("sg-auth"); } catch {} }
+    try { (remember ? localStorage : sessionStorage).setItem("sg-auth", JSON.stringify(auth)); } catch {}
+}
+const isAdmin = () => !!auth && auth.role === "admin";
+const isResident = () => !!auth && auth.role === "resident";
+
+// --- MAP CONFIGURATION ---
+let map, cameraLayer, trajLayer;
+
+// Custom Blueprint Aspect Ratio Mapping
+const MAP_W = 1000; 
+const MAP_H = 650; 
+
+// Translates your percentages into Leaflet's flat coordinate system
+function toLatLng(xPct, yPct) {
+    const lat = MAP_H - (yPct / 100 * MAP_H);
+    const lng = (xPct / 100 * MAP_W);
+    return [lat, lng];
+}
+
+const CAMERA_LOCATIONS = [
+    { name: "Main Gate",      x: 28, y: 92, status: "online" },
+    { name: "Side Gate",      x: 96, y: 28, status: "online" },
+    { name: "Community Park", x: 13, y: 60, status: "online" },
+    { name: "Lorong 1",       x: 28, y: 60, status: "online" },
+    { name: "Lorong 2",       x: 61, y: 60, status: "online" },
+    { name: "Lorong 3",       x: 93, y: 60, status: "online" },
+    { name: "Lorong 4 West",  x: 28, y: 23, status: "online" },
+    { name: "Lorong 4 East",  x: 61, y: 23, status: "online" }
+];
+
+const TYPE_COLORS = {
+    lost_pet: "#facc15",
+    unregistered_vehicle: "#fb7185",
+    suspicious_person: "#fb923c",
+    tailgating: "#c084fc",
+    trespasser: "#22d3ee"
+};
+const typeColor = t => TYPE_COLORS[t] || "#38bdf8";
+const TYPE_ICONS = { lost_pet: "🐾", unregistered_vehicle: "🚗", suspicious_person: "🕵️", tailgating: "🚪", trespasser: "🚷" };
+const typeIcon = t => TYPE_ICONS[t] || "⚠";
+const kindOf = t => /pet/.test(t) ? "pet" : /vehicle|tailgat/.test(t) ? "vehicle" : "person";
+const typeLabel = ty => I18N[LANG]["t_" + ty] || String(ty).replaceAll("_", " ").toUpperCase();
+
+let lastAlertsSignature = null;
+let currentTrajectories = [];
+let alertsByLocation = {};
+let selectedCamera = "Main Gate";
+let hoverType = null;
+let lockedType = null;
+let trajectoriesOn = true;
+let firstLoad = true;
+let hoverCam = null, hoverCanvas = null, hoverCtx = null;
+let lastLatency = 0;
+const seenIds = new Set();
+const sessionStart = Date.now();
+
+// --- INITIALIZE LEAFLET ---
+function initLeafletMap() {
+    map = L.map('leaflet-map', {
+        crs: L.CRS.Simple,
+        minZoom: -3, zoomSnap: 0.25,
+        maxZoom: 4,   // Allows zooming in freely
+        zoomControl: true, 
+        dragging: true,
+        scrollWheelZoom: true,
+        attributionControl: false
+    });
+    
+    // Position zoom control cleanly below the top HUD
+    map.zoomControl.setPosition('topleft');
+    
+    const bounds = [[0, 0], [MAP_H, MAP_W]];
+    
+    // Load your custom drawn map image
+    L.imageOverlay('Community_map.png', bounds).addTo(map);
+    
+    // Set a default center and zoom level, without forcing it to "fit the box"
+    // Fit the whole blueprint, centred. This is also the minimum zoom, and panning is kept near the image.
+    const fitMap = () => {
+        map.invalidateSize();
+        const size = map.getSize();
+        if (!size.x || !size.y) return;  // container not laid out yet; the observer below retries
+        const fit = map.getBoundsZoom(bounds);
+        map.setMinZoom(fit);
+        map.setMaxZoom(fit + 2);         // at most 4x magnification past "fit"
+        map.setMaxBounds(L.latLngBounds(bounds).pad(0.15));
+        map.options.maxBoundsViscosity = 1;
+        map.fitBounds(bounds, { animate: false });
+    };
+    fitMap();
+    const fitBtn = L.DomUtil.create('a', '', map.zoomControl.getContainer());
+    fitBtn.href = '#'; fitBtn.title = 'Fit map to screen'; fitBtn.innerHTML = '⤢';
+    L.DomEvent.on(fitBtn, 'click', e => { L.DomEvent.preventDefault(e); fitMap(); });
+    let resizeTimer;
+    new ResizeObserver(() => { clearTimeout(resizeTimer); resizeTimer = setTimeout(fitMap, 100); }).observe($("leaflet-map"));
+    
+    cameraLayer = L.layerGroup().addTo(map);
+    trajLayer = L.layerGroup().addTo(map);
+}
+
+function showToast(message, type = "success", action = null) {   // action = { label, onClick, ms }
+    const container = $("toast-container");
+    const toast = document.createElement("div");
+    toast.className = `toast ${type}`;
+    // textContent, never innerHTML: messages can contain server errors or names typed by users
+    const icon = document.createElement("span"), body = document.createElement("div");
+    icon.textContent = type === "success" ? "✔" : "⚠";
+    body.style.flex = "1"; body.textContent = message;
+    toast.append(icon, body);
+    const close = () => {
+        toast.style.animation = "toast-out 0.3s ease-in forwards";
+        setTimeout(() => toast.remove(), 300);
+    };
+    if (action) {
+        const btn = document.createElement("button");
+        btn.type = "button";
+        btn.className = "hud-btn ml-2 shrink-0";
+        btn.textContent = action.label;
+        btn.addEventListener("click", () => { btn.disabled = true; close(); action.onClick(); });
+        toast.appendChild(btn);
+    }
+    container.appendChild(toast);
+    setTimeout(close, action ? (action.ms || 8000) : 3500);
+}
+
+const Sound = {
+    ctx: null,
+    enabled: true,
+    init() {
+        if (!this.ctx) {
+            const AC = window.AudioContext || window.webkitAudioContext;
+            if (AC) this.ctx = new AC();
+        }
+        if (this.ctx && this.ctx.state === "suspended") this.ctx.resume();
+    },
+    tone(freq, dur, { type = "sine", vol = 0.06, to = null, delay = 0 } = {}) {
+        if (!this.enabled || !this.ctx) return;
+        const c = this.ctx, t = c.currentTime + delay;
+        const osc = c.createOscillator(), gain = c.createGain();
+        osc.type = type;
+        osc.frequency.setValueAtTime(freq, t);
+        if (to) osc.frequency.exponentialRampToValueAtTime(to, t + dur);
+        gain.gain.setValueAtTime(0.0001, t);
+        gain.gain.exponentialRampToValueAtTime(vol, t + 0.01);
+        gain.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+        osc.connect(gain).connect(c.destination);
+        osc.start(t);
+        osc.stop(t + dur + 0.03);
+    },
+    click()  { this.tone(880, .06, { type: "square", vol: .03, to: 600 }); },
+    hover()  { this.tone(1500, .03, { vol: .02 }); },
+    select() { this.tone(520, .08, { type: "triangle", vol: .05 }); this.tone(780, .1, { type: "triangle", vol: .05, delay: .07 }); },
+    alert()  { for (let i = 0; i < 3; i++) this.tone(900, .13, { type: "sawtooth", vol: .045, to: 600, delay: i * .2 }); },
+    pet()    { this.tone(700, .1, { type: "triangle", vol: .06 }); this.tone(1050, .14, { type: "triangle", vol: .06, delay: .12 }); },
+    resolve(){ [520, 660, 880].forEach((f, i) => this.tone(f, .12, { type: "triangle", vol: .05, delay: i * .08 })); },
+    reset()  { [880, 660, 440, 220].forEach((f, i) => this.tone(f, .12, { type: "sawtooth", vol: .04, delay: i * .08 })); },
+    error()  { this.tone(180, .25, { type: "sawtooth", vol: .05, to: 90 }); },
+    boot()   {
+        this.tone(100, .7, { type: "sawtooth", vol: .05, to: 1400 });
+        [880, 1100, 1320].forEach((f, i) => this.tone(f, .08, { type: "square", vol: .03, delay: .75 + i * .1 }));
+    }
+};
+// Siren: two-tone police-style wail built from a sweeping sawtooth oscillator
+Object.assign(Sound, {
+    sirenOn: true,
+    siren(dur = 2.4) {
+        if (!this.enabled || !this.sirenOn || !this.ctx) return 0;
+        const c = this.ctx, t = c.currentTime;
+        const osc = c.createOscillator(), gain = c.createGain(), lp = c.createBiquadFilter();
+        osc.type = "sawtooth"; lp.type = "lowpass"; lp.frequency.value = 2200;
+        osc.frequency.setValueAtTime(650, t);
+        for (let x = 0; x < dur; x += 0.6) {
+            osc.frequency.linearRampToValueAtTime(1150, t + x + 0.3);
+            osc.frequency.linearRampToValueAtTime(650, t + x + 0.6);
+        }
+        gain.gain.setValueAtTime(0.0001, t);
+        gain.gain.exponentialRampToValueAtTime(0.07, t + 0.05);
+        gain.gain.setValueAtTime(0.07, t + dur - 0.12);
+        gain.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+        osc.connect(lp).connect(gain).connect(c.destination);
+        osc.start(t); osc.stop(t + dur + 0.05);
+        return dur;
+    }
+});
+
+// Voice: browser speech synthesis reads the alert aloud (includes the A* exit ETA)
+const Voice = {
+    on: true,
+    ok: "speechSynthesis" in window,
+    unlock() { if (this.ok) speechSynthesis.speak(new SpeechSynthesisUtterance("")); },
+    speak(text) {
+        if (!this.on || !this.ok) return;
+        speechSynthesis.cancel();  // never queue up stale alerts
+        const u = new SpeechSynthesisUtterance(text);
+        u.lang = tx("speech"); u.rate = 1.02; u.pitch = 0.9;
+        // Use an installed voice that matches the language (Malay voices are missing on some systems; the lang tag is the fallback).
+        const prefix = u.lang.slice(0, 2).toLowerCase();
+        const v = speechSynthesis.getVoices().find(v => v.lang.toLowerCase() === u.lang.toLowerCase())
+               || speechSynthesis.getVoices().find(v => v.lang.toLowerCase().startsWith(prefix));
+        if (v) u.voice = v;
+        speechSynthesis.speak(u);
+    }
+};
+if (Voice.ok) speechSynthesis.getVoices();  // some browsers load the voice list lazily
+const spokenEta = s => s < 60 ? tx("sec", { n: s }) : tx("min", { n: (s / 60).toFixed(1).replace(".0", "") });
+function voiceLine(a) {
+    const r = a.trajectory && a.trajectory.route_to_exit;
+    let s = a.type.startsWith("lost_pet")
+        ? tx("v_pet", { name: a.pet_name ? " " + a.pet_name : "", loc: locName(a.location) })
+        : tx("v_alert", { type: typeLabel(a.type).toLowerCase(), loc: locName(a.location) });
+    if (r && r.eta_seconds > 0) s += tx("v_eta", { eta: spokenEta(r.eta_seconds), gate: locName(r.gate) });
+    if (/vehicle/.test(a.type) && a.plate_number) s += tx("v_plate", { plate: a.plate_number.split("").join(" ") });
+    return s;
+}
+try { if (localStorage.getItem("sg-sound") === "off") Sound.enabled = false; } catch {}
+try { if (localStorage.getItem("sg-siren") === "off") Sound.sirenOn = false; } catch {}
+try { if (localStorage.getItem("sg-voice") === "off") Voice.on = false; } catch {}
+
+document.addEventListener("pointerdown", () => Sound.init());
+document.addEventListener("click", e => {
+    const btn = e.target.closest("button");
+    if (btn && !btn.dataset.sfx) Sound.click();
+});
+
+let bootIdx = 0;
+const bootTimer = setInterval(() => {
+    const log = $("boot-log");
+    const bootLines = tx("boot_lines");
+    if (!log) clearInterval(bootTimer);
+    else if (bootIdx < bootLines.length) log.textContent += bootLines[bootIdx++] + "\n";
+    else clearInterval(bootTimer);
+}, 280);
+
+function dismissBoot() {
+    const boot = $("boot");
+    if (!boot || boot.dataset.done) return;
+    boot.dataset.done = "1";
+    try { localStorage.setItem("sg-booted", "1"); } catch {}
+    Sound.init();
+    Sound.boot();
+    Voice.unlock();
+    boot.classList.add("opacity-0");
+    setTimeout(() => boot.remove(), 800);
+}
+$("boot-btn").addEventListener("click", dismissBoot);
+// After the first visit, go straight to the login/dashboard (add ?boot=1 to the address to see the intro again).
+// Browsers only allow sound after a click, so audio switches on at the first tap or key press.
+let seenBoot = false;
+try { seenBoot = localStorage.getItem("sg-booted") === "1" && !new URLSearchParams(location.search).has("boot"); } catch {}
+if (seenBoot) {
+    $("boot").remove();
+    const unlockAudio = () => { Sound.init(); Voice.unlock(); };
+    document.addEventListener("pointerdown", unlockAudio, { once: true });
+    document.addEventListener("keydown", unlockAudio, { once: true });
+}
+document.addEventListener("keydown", () => { if ($("boot")) dismissBoot(); });
+
+function threatInfo(n) {
+    if (n === 0) return [tx("th_secure"),   "text-emerald-400"];
+    if (n <= 2)  return [tx("th_guarded"),  "text-cyan-300"];
+    if (n <= 4)  return [tx("th_elevated"), "text-yellow-300"];
+    if (n <= 6)  return [tx("th_high"),     "text-orange-400"];
+    return [tx("th_critical"), "text-red-500 animate-pulse"];
+}
+
+let hudState = { online: false, latency: 0, count: 0 };
+function updateHud({ online, latency = 0, count = 0 }) {
+    hudState = { online, latency, count };
+    const link = $("hud-link");
+    link.textContent = online ? (wsOpen() ? tx("link_live") : tx("link_poll")) : tx("link_off");
+    link.className = "hud-value " + (online ? "text-emerald-400" : "text-red-500 animate-pulse");
+    $("hud-latency").textContent = online ? `${latency} ms` : "-- ms";
+    
+    $("hud-alerts").textContent = pad2(count);
+    const alertsContainer = $("hud-alerts-container");
+    if (count > 0) {
+        alertsContainer.classList.add("hud-stat-alert");
+        $("hud-alerts").className = "hud-value text-red-400 animate-pulse font-black text-sm";
+    } else {
+        alertsContainer.classList.remove("hud-stat-alert");
+        $("hud-alerts").className = "hud-value text-cyan-200";
+    }
+
+    const [label, cls] = threatInfo(count);
+    const threat = $("hud-threat");
+    threat.textContent = label;
+    threat.className = "hud-value " + cls;
+    $("hud-nodes").textContent = CAMERA_LOCATIONS.length;   // cameras on the site plan (no heartbeat exists to prove "online")
+}
+
+function tickClock() {
+    const now = new Date();
+    $("hud-clock").textContent = now.toLocaleTimeString([], { hour12: false });
+    $("hud-date").textContent = now.toLocaleDateString("en-GB").replaceAll("/", ".");
+    const s = Math.floor((Date.now() - sessionStart) / 1000);
+    $("hud-uptime").textContent = `${pad2(Math.floor(s / 3600))}:${pad2(Math.floor(s / 60) % 60)}:${pad2(s % 60)}`;
+    document.querySelectorAll("[data-raw-time]").forEach(el => {
+        el.textContent = `🕒 ${formatAlertTime(el.dataset.rawTime)}`;
+    });
+}
+
+// Real numbers from /api/stats: alerts in the last hour, age of the oldest open alert, and how many are "old".
+let lastStats = null;
+function fmtAge(min) {
+    if (min === null || min === undefined) return "—";
+    if (min < 60) return `${min}m`;
+    if (min < 48 * 60) return `${Math.floor(min / 60)}h`;
+    return `${Math.floor(min / 1440)}d`;
+}
+function renderStats() {
+    const s = lastStats;
+    const btn = $("btn-clear-old");
+    if (!s) { btn.classList.add("hidden"); return; }
+    $("val-load").textContent = s.alerts_last_hour;
+    $("bar-load").style.width = `${Math.min(100, (s.alerts_last_hour / 20) * 100)}%`;
+    $("val-net").textContent = fmtAge(s.oldest_open_minutes);
+    $("bar-net").style.width = `${Math.min(100, ((s.oldest_open_minutes || 0) / 1440) * 100)}%`;
+    $("val-net").className = (s.oldest_open_minutes || 0) > s.stale_hours * 60 ? "text-amber-300" : "text-fuchsia-200";
+    btn.classList.toggle("hidden", !s.stale_count);
+    btn.textContent = `🧹 ${tx("clear_old")} (${s.stale_count})`;
+}
+async function loadStats() {
+    if (!auth || isResident()) return;
+    try { lastStats = await requestJson(`${API_BASE}/stats`); renderStats(); } catch { /* keep the last numbers */ }
+}
+async function clearOldAlerts() {
+    if (!lastStats || !confirm(tx("clear_old_confirm", { n: lastStats.stale_count, h: lastStats.stale_hours }))) return;
+    try {
+        const r = await requestJson(`${API_BASE}/resolve_stale?hours=${lastStats.stale_hours}`, { method: "PUT" });
+        Sound.resolve();
+        showToast(tx("cleared_ok", { n: r.resolved }), "success");
+        if (!wsOpen()) { lastAlertsSignature = null; await fetchAlerts(); }
+        loadStats();
+    } catch (error) {
+        showToast(tx("resolve_fail", { m: error.message }), "error");
+        Sound.error();
+    }
+}
+
+function refreshToggles() {
+    $("btn-sound").textContent = `${Sound.enabled ? "🔊" : "🔇"} ${tx("btn_sfx")}`;
+    $("btn-siren").textContent = `🚨 ${tx("btn_siren")}`;
+    $("btn-sound").classList.toggle("off", !Sound.enabled);
+    $("btn-siren").classList.toggle("off", !Sound.sirenOn);
+    $("btn-voice").classList.toggle("off", !Voice.on);
+    $("btn-voice").title = Voice.ok ? tx("voice_t") : tx("voice_unsupported");
+    $("btn-traj").classList.toggle("off", !trajectoriesOn);
+    $("btn-scan").classList.toggle("off", $("scan-layer").classList.contains("hidden"));
+}
+$("btn-sound").addEventListener("click", () => {
+    Sound.enabled = !Sound.enabled;
+    try { localStorage.setItem("sg-sound", Sound.enabled ? "on" : "off"); } catch {}
+    refreshToggles();
+    Sound.click();
+});
+$("btn-traj").addEventListener("click", () => {
+    trajectoriesOn = !trajectoriesOn;
+    refreshToggles();
+    drawTrajectories();
+    Sound.click();
+});
+$("btn-scan").addEventListener("click", () => {
+    $("scan-layer").classList.toggle("hidden");
+    refreshToggles();
+    Sound.click();
+});
+
+function formatAlertTime(rawTimestamp) {
+    if (!rawTimestamp) return tx("just_now");
+    const isoString = rawTimestamp.includes("T") ? rawTimestamp : rawTimestamp.replace(" ", "T");
+    const parsedDate = new Date(isoString);
+    if (Number.isNaN(parsedDate.getTime())) return rawTimestamp;
+
+    const diffSec = Math.max(0, Math.floor((Date.now() - parsedDate.getTime()) / 1000));
+    let relative = tx("just_now");
+    if (diffSec >= 86400) relative = tx("ago_d", { n: Math.floor(diffSec / 86400) });
+    else if (diffSec >= 3600) relative = tx("ago_h", { n: Math.floor(diffSec / 3600) });
+    else if (diffSec >= 60) relative = tx("ago_m", { n: Math.floor(diffSec / 60) });
+    else if (diffSec > 5) relative = tx("ago_s", { n: diffSec });
+
+    const timeStr = parsedDate.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" });
+    const today = new Date();
+    const sameDay = parsedDate.getFullYear() === today.getFullYear() && parsedDate.getMonth() === today.getMonth() && parsedDate.getDate() === today.getDate();
+    const dateStr = sameDay ? "" : parsedDate.toLocaleDateString([], { day: "numeric", month: "short" }) + ", ";
+    return `${dateStr}${timeStr} (${relative})`;
+}
+
+function renderCameraMarkers(cameras, activeLocations = new Set()) {
+    if (!cameraLayer) return;
+    cameraLayer.clearLayers();
+
+    cameras.forEach(camera => {
+        const hasAlert = activeLocations.has(camera.name);
+        const isSelected = camera.name === selectedCamera;
+        
+        const cls = `marker pointer-events-auto flex items-center justify-center h-4 w-4 rounded-full border-2 border-white focus:outline-none ${hasAlert ? "marker-alert bg-red-500" : "marker-ok bg-emerald-400"} ${isSelected ? "marker-selected" : ""}`;
+        const pingHtml = `<span class="pointer-events-none absolute -inset-1 animate-ping rounded-full ${hasAlert ? 'bg-red-500/60' : 'bg-emerald-400/30'}"></span>`;
+        
+        const icon = L.divIcon({
+            className: 'custom-leaflet-marker',
+            html: `<div class="${cls}" data-camera="${camera.name}">${pingHtml}${hasAlert ? '<span class="marker-glyph">!</span>' : ''}</div>`,
+            iconSize: [16, 16],
+            iconAnchor: [8, 8]
+        });
+
+        const marker = L.marker(toLatLng(camera.x, camera.y), { icon }).addTo(cameraLayer);
+        
+        marker.bindTooltip(`
+            <span class="block whitespace-nowrap font-bold text-cyan-300">${locName(camera.name)}</span>
+            <span class="block whitespace-nowrap ${hasAlert ? 'font-semibold text-red-400' : 'text-emerald-400'}">${hasAlert ? tx('cam_alert') : tx('cam_online')}</span>
+            <canvas class="hover-thumb mt-1.5 block rounded border border-cyan-400/40" width="320" height="180" style="width:160px;height:90px"></canvas>
+            <span class="block whitespace-nowrap text-[10px] text-slate-400">${tx('cctv_click')}</span>
+        `, {
+            className: 'cyber-tooltip',
+            direction: camera.x <= 25 ? 'right' : (camera.x >= 75 ? 'left' : 'top'),
+            offset: [0, -10]
+        });
+
+        marker.on('click', () => { selectCamera(camera.name); Sound.select(); });
+        marker.on('mouseover', () => { Sound.hover(); });
+        marker.on('tooltipopen', e => {
+            hoverCam = camera.name;
+            hoverCanvas = e.tooltip.getElement().querySelector('.hover-thumb');
+            hoverCtx = hoverCanvas && hoverCanvas.getContext('2d');
+        });
+        marker.on('tooltipclose', () => { if (hoverCam === camera.name) hoverCam = null; });
+    });
+}
+
+function selectCamera(name) {
+    selectedCamera = name;
+    // Re-render markers to update selected class visually
+    renderCameraMarkers(CAMERA_LOCATIONS, new Set(Object.keys(alertsByLocation).filter(k => alertsByLocation[k].length)));
+    updateCctvMeta();
+
+    const petSel = $("pet-location");
+    if (petSel && !$("lost-pet-view").classList.contains("hidden")) petSel.value = name;
+}
+
+function updateCctvMeta() {
+    const idx = CAMERA_LOCATIONS.findIndex(c => c.name === selectedCamera);
+    $("cctv-name").textContent = `CAM-${pad2(idx + 1)} · ${locName(selectedCamera)}`;
+    const n = (alertsByLocation[selectedCamera] || []).length;
+    const status = $("cctv-status");
+    status.textContent = n ? tx("cctv_alerts", { n }).replace("(S)", n > 1 ? "S" : "") : tx("cctv_clear");
+    status.className = n ? "text-red-400 animate-pulse font-semibold" : "text-emerald-400";
+}
+
+function stepCamera(dir) {
+    const idx = CAMERA_LOCATIONS.findIndex(c => c.name === selectedCamera);
+    const next = (idx + dir + CAMERA_LOCATIONS.length) % CAMERA_LOCATIONS.length;
+    selectCamera(CAMERA_LOCATIONS[next].name);
+}
+$("cam-prev").addEventListener("click", () => stepCamera(-1));
+$("cam-next").addEventListener("click", () => stepCamera(1));
+
+function parsePredicted(str = "") {
+    if (!str) return null;
+    let best = null, idx = Infinity;
+    CAMERA_LOCATIONS.forEach(c => {
+        const i = str.indexOf(c.name);
+        if (i !== -1 && i < idx) { idx = i; best = c.name; }
+    });
+    return best;
+}
+
+function drawTrajectories() {
+    if (!trajLayer) return;
+    trajLayer.clearLayers();
+    if (!trajectoriesOn) return;
+
+    currentTrajectories.forEach(({ type, trajectory: t }) => {
+        if (!t) return;
+        
+        const eff = hoverType || lockedType;
+        const isActive = !eff || eff === type;
+        const color = typeColor(type);
+        const opacity = isActive ? 0.9 : 0.2;
+
+        const cA = CAMERA_LOCATIONS.find(c => c.name === t.first_seen.location);
+        const cB = CAMERA_LOCATIONS.find(c => c.name === t.last_seen.location);
+        const pName = parsePredicted(t.predicted_next_zone);
+        const cP = pName ? CAMERA_LOCATIONS.find(c => c.name === pName) : null;
+        
+        if (!cB) return;
+
+        const pts = [];
+        if (cA && (cA.x !== cB.x || cA.y !== cB.y)) pts.push(toLatLng(cA.x, cA.y));
+        pts.push(toLatLng(cB.x, cB.y));
+
+        if (pts.length > 1) {
+            L.polyline(pts, {
+                color: color,
+                weight: isActive ? 3 : 2,
+                opacity: opacity,
+                className: isActive ? 'traj-animated' : ''
+            }).addTo(trajLayer);
+            
+            L.circleMarker(pts[0], {
+                radius: 4, color: color, weight: 1.5, fillOpacity: 0, opacity: opacity
+            }).addTo(trajLayer);
+        }
+        // type symbol at the last sighting, so people / vehicles / pets are told apart without relying on colour
+        L.marker(toLatLng(cB.x, cB.y), {
+            interactive: false, keyboard: false, opacity: isActive ? 1 : 0.35,
+            icon: L.divIcon({ className: "", html: `<span class="traj-glyph">${typeIcon(type)}</span>`, iconSize: [18, 18], iconAnchor: [-6, 24] })
+        }).addTo(trajLayer);
+
+        const rt = t.route_to_exit;
+        if (rt && rt.path.length > 1 && eff === type) {
+            const rpts = rt.path.map(n => CAMERA_LOCATIONS.find(c => c.name === n)).filter(Boolean).map(c => toLatLng(c.x, c.y));
+            L.polyline(rpts, { color: "#ffffff", weight: 2, opacity: 0.85, dashArray: "2 8", className: "traj-pred" }).addTo(trajLayer);
+            L.circleMarker(rpts[rpts.length - 1], { radius: 5, color: "#ffffff", weight: 2, fillOpacity: 0.3 })
+                .bindTooltip(`⏱ ${locName(rt.gate)} ~${etaText(rt.eta_seconds)}`, { permanent: true, direction: "top", className: "cyber-tooltip", offset: [0, -6] })
+                .addTo(trajLayer);
+        }
+
+        if (cP && (cP.x !== cB.x || cP.y !== cB.y)) {
+            const pLatLng = toLatLng(cP.x, cP.y);
+            L.polyline([pts[pts.length - 1], pLatLng], {
+                color: color,
+                weight: 2,
+                opacity: opacity * 0.7,
+                className: 'traj-pred'
+            }).addTo(trajLayer);
+
+            L.circleMarker(pLatLng, {
+                radius: 8, color: color, weight: 1.5, fillOpacity: 0, opacity: opacity, dashArray: '3 3'
+            }).addTo(trajLayer);
+        }
+    });
+}
+
+function toggleLock(type) {
+    lockedType = lockedType === type ? null : type;
+    drawTrajectories(); 
+    
+    document.querySelectorAll("[data-card-type], [data-legend-type]").forEach(el => {
+        const tp = el.dataset.cardType || el.dataset.legendType;
+        const eff = lockedType;
+        el.classList.toggle("card-hot", !!eff && tp === eff);
+        el.classList.toggle("card-dim", !!eff && tp !== eff);
+    });
+    Sound.select();
+}
+
+function bindHighlight(el, type, { sound = false } = {}) {
+    el.addEventListener("mouseenter", () => { 
+        hoverType = type; 
+        drawTrajectories();
+        document.querySelectorAll("[data-card-type], [data-legend-type]").forEach(card => {
+            const tp = card.dataset.cardType || card.dataset.legendType;
+            card.classList.toggle("card-hot", tp === type);
+            card.classList.toggle("card-dim", tp !== type);
+        });
+        if (sound) Sound.hover(); 
+    });
+    el.addEventListener("mouseleave", () => { 
+        hoverType = null; 
+        drawTrajectories();
+        document.querySelectorAll("[data-card-type], [data-legend-type]").forEach(card => {
+            card.classList.remove("card-hot", "card-dim");
+            if (lockedType) {
+                const tp = card.dataset.cardType || card.dataset.legendType;
+                card.classList.toggle("card-hot", tp === lockedType);
+                card.classList.toggle("card-dim", tp !== lockedType);
+            }
+        });
+    });
+}
+
+// The same legend is drawn in the desktop side panel and in the phone drawer's Tracker tab.
+function renderLegend() {
+    const n = currentTrajectories.length;
+    $("traj-count").textContent = n ? `(${n})` : "";
+    $("traj-count-m").textContent = n ? `(${n})` : "";
+    [$("traj-legend"), $("traj-legend-m")].forEach(box => {
+        box.replaceChildren();
+        if (!n) {
+            const p = document.createElement("p");
+            p.className = "mt-6 text-center text-slate-400";
+            p.textContent = tx("trk_none");
+            box.appendChild(p);
+            return;
+        }
+        currentTrajectories.forEach(({ type, trajectory: tj }) => {
+            if (!tj) return;
+            const row = document.createElement("div");
+            row.className = "legend-row";
+            row.dataset.legendType = type;
+            row.style.setProperty("--c", typeColor(type));
+
+            const name = document.createElement("div");
+            name.className = "font-bold";
+            name.style.color = typeColor(type);
+            name.textContent = typeLabel(type);
+            const route = document.createElement("div");
+            route.className = "text-slate-200";
+            route.textContent = `${locName(tj.first_seen.location)} → ${locName(tj.last_seen.location)} · ${tj.total_sightings} ${tx("seen")}`;
+            const pred = document.createElement("div");
+            pred.className = "text-slate-300";
+            pred.textContent = `⇢ ${zoneText(tj.predicted_next_zone)}`;
+            row.append(name, route, pred);
+            if (tj.route_to_exit) {
+                const eta = document.createElement("div");
+                eta.className = "text-cyan-300";
+                eta.textContent = `⏱ ${locName(tj.route_to_exit.gate)} ~${etaText(tj.route_to_exit.eta_seconds)}`;
+                row.appendChild(eta);
+            }
+
+            bindHighlight(row, type, { sound: true });
+            row.addEventListener("click", () => toggleLock(type));
+            if (lockedType) {
+                row.classList.toggle("card-hot", type === lockedType);
+                row.classList.toggle("card-dim", type !== lockedType);
+            }
+            box.appendChild(row);
+        });
+    });
+}
+
+const cctvCanvas = $("cctv-canvas");
+const cctx = cctvCanvas.getContext("2d");
+const CW = cctvCanvas.width, CH = cctvCanvas.height;
+let lastCctvFrame = 0, lastGridFrame = 0;
+const gridCams = [];
+
+function hashStr(s) {
+    let h = 2166136261;
+    for (let i = 0; i < s.length; i++) { h ^= s.charCodeAt(i); h = Math.imul(h, 16777619); }
+    return h >>> 0;
+}
+function rng(seed) {
+    return () => {
+        seed |= 0; seed = (seed + 0x6D2B79F5) | 0;
+        let t = Math.imul(seed ^ (seed >>> 15), 1 | seed);
+        t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+        return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+    };
+}
+
+function drawFigure(c, x, y, s, kind, tracked) {
+    c.fillStyle = "rgba(190,255,215,.75)";
+    let bw, bh, hd = 0;
+    if (/vehicle/.test(kind)) {
+        bw = 32 * s; bh = 12 * s;
+        c.fillRect(x - bw / 2, y - bh, bw, bh);
+        c.fillRect(x - bw / 3, y - bh - 6 * s, bw * .66, 6 * s);
+        hd = 6 * s;
+        c.fillStyle = "#020806";
+        c.beginPath(); c.arc(x - bw / 3, y, 3 * s, 0, 7); c.arc(x + bw / 3, y, 3 * s, 0, 7); c.fill();
+    } else if (/pet/.test(kind)) {
+        bw = 14 * s; bh = 8 * s;
+        c.fillRect(x - bw / 2, y - bh, bw, bh);
+        c.beginPath(); c.arc(x + bw / 2, y - bh, 3 * s, 0, 7); c.fill();
+    } else {
+        bw = 8 * s; bh = 22 * s; hd = 8 * s;
+        c.fillRect(x - bw / 2, y - bh, bw, bh);
+        c.beginPath(); c.arc(x, y - bh - 3.5 * s, 3.5 * s, 0, 7); c.fill();
+    }
+    const col = tracked ? typeColor(kind) : "#4ade80";
+    c.strokeStyle = col; c.lineWidth = 1;
+    c.strokeRect(x - bw / 2 - 4, y - bh - hd - 4, bw + 8, bh + hd + 8);
+    if (tracked) {
+        c.fillStyle = col;
+        c.font = '9px "Share Tech Mono", monospace';
+        c.textAlign = "left"; c.textBaseline = "alphabetic";
+        c.fillText(typeLabel(kind), x - bw / 2 - 4, y - bh - hd - 7);
+    }
+}
+
+function paintFeed(c, cv, cam, t) {
+    const W = CW, H = CH;
+    const r = rng(hashStr(cam));
+    const alerts = alertsByLocation[cam] || [];
+
+    const bg = c.createLinearGradient(0, 0, 0, H);
+    bg.addColorStop(0, "#071a14"); bg.addColorStop(1, "#020806");
+    c.fillStyle = bg; c.fillRect(0, 0, W, H);
+
+    const vx = W * (0.3 + r() * 0.4), vy = H * (0.32 + r() * 0.12);
+
+    c.fillStyle = "rgba(16,64,48,.55)"; c.strokeStyle = "rgba(74,222,128,.35)"; c.lineWidth = 1;
+    for (let i = 0; i < 6; i++) {
+        const bw = 24 + r() * 46, bh = 18 + r() * (vy - 10), bx = r() * (W - bw);
+        c.fillRect(bx, vy - bh, bw, bh);
+        c.strokeRect(bx + .5, vy - bh + .5, bw, bh);
+    }
+
+    c.fillStyle = "rgba(6,30,22,.85)"; c.fillRect(0, vy, W, H - vy);
+    c.strokeStyle = "rgba(74,222,128,.22)";
+    for (let i = -8; i <= 8; i++) { c.beginPath(); c.moveTo(vx, vy); c.lineTo(vx + (i * W) / 5, H); c.stroke(); }
+    for (let k = 1; k <= 7; k++) {
+        const y = vy + (H - vy) * Math.pow(k / 7, 2);
+        c.beginPath(); c.moveTo(0, y); c.lineTo(W, y); c.stroke();
+    }
+
+    for (let i = 0; i < 3; i++) {
+        const speed = 0.25 + r() * 0.4, phase = r() * 100, depth = 0.25 + r() * 0.65;
+        const dir = r() > 0.5 ? 1 : -1;
+        const span = W + 60;
+        const x = ((((t * speed * 30 * dir + phase) % span) + span) % span) - 30;
+        const y = vy + (H - vy) * depth, s = 0.55 + depth * 1.1;
+        const tracked = i === 0 && alerts.length > 0;
+        drawFigure(c, x, y, s, tracked ? alerts[0] : "person", tracked);
+    }
+
+    for (let i = 0; i < 90; i++) {
+        c.fillStyle = `rgba(255,255,255,${Math.random() * 0.09})`;
+        c.fillRect(Math.random() * W, Math.random() * H, 2, 1);
+    }
+
+    if (Math.floor(t * 3) % 19 === 0) {
+        const gy = Math.random() * (H - 12);
+        c.drawImage(cv, 0, gy, W, 10, 5, gy, W, 10);
+    }
+
+    c.fillStyle = "rgba(0,0,0,.25)";
+    for (let y = 0; y < H; y += 3) c.fillRect(0, y, W, 1);
+
+    const vg = c.createRadialGradient(W / 2, H / 2, H * 0.3, W / 2, H / 2, H * 0.95);
+    vg.addColorStop(0, "rgba(0,0,0,0)"); vg.addColorStop(1, "rgba(0,0,0,.65)");
+    c.fillStyle = vg; c.fillRect(0, 0, W, H);
+
+    const idx = CAMERA_LOCATIONS.findIndex(cm => cm.name === cam) + 1;
+    const now = new Date();
+    c.font = '11px "Share Tech Mono", monospace';
+    c.textBaseline = "top"; c.textAlign = "left";
+    c.fillStyle = "#a7f3d0";
+    c.fillText(`CAM-${pad2(idx)}  ${locName(cam).toUpperCase()}`, 8, 6);
+    c.fillText(`${now.toLocaleDateString("en-GB")} ${now.toLocaleTimeString([], { hour12: false })}`, 8, H - 17);
+    if (Math.floor(t * 1.5) % 2 === 0) {
+        c.fillStyle = "#ef4444"; c.beginPath(); c.arc(W - 44, 12, 4, 0, 7); c.fill();
+    }
+    c.fillStyle = "#fecaca"; c.fillText("REC", W - 36, 6);
+    c.fillStyle = "#67e8f9"; c.textAlign = "right"; c.fillText("AI: ONLINE", W - 8, H - 17);
+    if (alerts.length && Math.floor(t * 3) % 2 === 0) {
+        c.fillStyle = "#f87171"; c.textAlign = "center";
+        c.fillText("⚠ " + typeLabel(alerts[0]), W / 2, H - 34);
+    }
+    c.textAlign = "left";
+
+    c.strokeStyle = "#67e8f9"; c.lineWidth = 1.5;
+    [[4, 4, 1, 1], [W - 4, 4, -1, 1], [4, H - 4, 1, -1], [W - 4, H - 4, -1, -1]].forEach(([x, y, sx, sy]) => {
+        c.beginPath(); c.moveTo(x, y + 12 * sy); c.lineTo(x, y); c.lineTo(x + 12 * sx, y); c.stroke();
+    });
+}
+
+function drawCCTV(ts) {
+    requestAnimationFrame(drawCCTV);
+    if (ts - lastCctvFrame < 55) return;
+    lastCctvFrame = ts;
+    paintFeed(cctx, cctvCanvas, selectedCamera, ts / 1000);
+    if (hoverCam && hoverCtx && hoverCanvas.isConnected) paintFeed(hoverCtx, hoverCanvas, hoverCam, ts / 1000);
+    if (!$("grid-view").classList.contains("hidden") && ts - lastGridFrame > 110) {
+        lastGridFrame = ts;
+        gridCams.forEach(({ name, cv, cell }) => {
+            paintFeed(cv.getContext("2d"), cv, name, ts / 1000);
+            const hot = (alertsByLocation[name] || []).length > 0;
+            cell.classList.toggle("border-red-500", hot);
+            cell.classList.toggle("border-cyan-400/30", !hot);
+        });
+    }
+}
+
+const TAB_ON  = "whitespace-nowrap rounded-full bg-blue-600 px-3 py-1.5 text-xs font-semibold lg:px-5 transition hover:bg-blue-500";
+const TAB_OFF = "whitespace-nowrap rounded-full px-3 py-1.5 text-xs font-semibold lg:px-5 text-gray-300 transition hover:bg-gray-800 hover:text-white";
+
+function showView(view) {
+    if (isResident()) view = "lost-pet";   // residents only ever see the Lost Pet Register
+    [["dashboard", "dashboard-tab", null],
+     ["history", "history-tab", "history-view"],
+     ["grid", "grid-tab", "grid-view"],
+     ["lost-pet", "lost-pet-tab", "lost-pet-view"],
+     ["residents", "residents-tab", "residents-view"]].forEach(([v, tab, panel]) => {
+        $(tab).className = v === view ? TAB_ON : TAB_OFF;
+        if (panel) {
+            $(panel).classList.toggle("hidden", v !== view);
+            $(panel).classList.toggle("flex", v === view);
+        }
+    });
+    if (view === "lost-pet") $("pet-location").value = selectedCamera;
+    if (view === "residents") loadResidents();
+    if (view === "history") { histPage = 0; loadHistory(); }
+}
+document.addEventListener("keydown", e => {
+    if (e.key === "Escape" && !$("boot") && auth) { closeDetails(); closeAccount(); showView("dashboard"); }
+});
+
+function flashScreen() {
+    const f = $("alert-flash");
+    f.classList.remove("flash");
+    void f.offsetWidth;
+    f.classList.add("flash");
+}
+
+function announceNewAlerts(list) {
+    const urgent = list.filter(a => !a.type.startsWith("lost_pet"));
+    let delay = 0;
+    if (!urgent.length) Sound.pet();
+    else if (Sound.sirenOn) delay = Sound.siren(2.4);
+    else Sound.alert();
+    flashScreen();
+    const lead = urgent[0] || list[0];
+    const text = list.length > 1 ? tx("v_multi", { n: list.length, line: voiceLine(lead) }) : voiceLine(lead);
+    setTimeout(() => Voice.speak(text), delay * 1000);
+}
+
+function appendAlertDetail(container, label, value, valueClass = "text-gray-200") {
+    const line = document.createElement("p");
+    line.className = "mt-1 leading-relaxed";
+    const heading = document.createElement("span");
+    heading.className = "font-semibold text-gray-400";
+    heading.textContent = `${label}: `;
+    const val = document.createElement("span");
+    val.className = valueClass;
+    val.textContent = value;
+    line.append(heading, val);
+    container.appendChild(line);
+}
+
+function buildAlertCard(alert, isNew) {
+    const isLostPet = alert.type.startsWith("lost_pet");
+    const color = typeColor(alert.type);
+    const name = typeLabel(alert.type);
+
+    const card = document.createElement("div");
+    card.className = "alert-card group flex shrink-0 cursor-pointer flex-col gap-2 rounded-lg bg-gray-900/80 p-3" + (isNew ? " card-new" : "");
+    card.style.borderLeft = `3px solid ${color}`;
+    card.style.setProperty("--c", color);
+    card.dataset.cardType = alert.type;
+    card.dataset.kind = kindOf(alert.type);
+
+    const details = document.createElement("div");
+    details.className = "flex items-start justify-between gap-2";
+
+    const text = document.createElement("div");
+    const time = document.createElement("p");
+    time.className = "font-data text-xs text-gray-300";
+    time.dataset.rawTime = alert.time || "";
+    time.textContent = `🕒 ${formatAlertTime(alert.time)}`;
+    const type = document.createElement("p");
+    type.className = "mt-1";
+    const pill = document.createElement("span");
+    pill.className = "type-pill font-hud";
+    pill.textContent = `${typeIcon(alert.type)} ${name}`;
+    type.appendChild(pill);
+    const location = document.createElement("p");
+    location.className = "mt-1.5 text-base font-semibold text-white";
+    location.textContent = `📍 ${locName(alert.location)}`;
+    text.append(time, type, location);
+    if (alert.pet_name) {
+        const pet = document.createElement("p");
+        pet.className = "font-data text-xs text-yellow-200";
+        pet.textContent = `🐾 ${alert.pet_name}`;
+        text.appendChild(pet);
+    }
+
+    const image = document.createElement("img");
+    image.src = alert.image_url;
+    image.alt = name;
+    image.className = "h-16 w-16 shrink-0 rounded-lg border border-cyan-400/30 object-cover";
+    details.append(text, image);
+
+    const extra = document.createElement("div");
+    extra.className = "hidden group-hover:block max-h-40 overflow-y-auto font-data mt-1 rounded-lg border border-gray-700/80 bg-gray-950/70 p-2.5 text-xs text-gray-300";
+    if (isLostPet && alert.owner_name) appendAlertDetail(extra, tx("d_owner"), alert.owner_name);
+    if (/vehicle/i.test(alert.type)) appendAlertDetail(extra, tx("d_plate"), alert.plate_number || tx("d_noplate"));
+    if (alert.trajectory) {
+        appendAlertDetail(extra, tx("d_hist"), `${locName(alert.trajectory.first_seen.location)} → ${locName(alert.trajectory.last_seen.location)}`);
+        appendAlertDetail(extra, tx("d_pred"), zoneText(alert.trajectory.predicted_next_zone), "text-cyan-300 font-semibold");
+        if (alert.trajectory.route_to_exit) appendAlertDetail(extra, tx("d_eta"), `${locName(alert.trajectory.route_to_exit.gate)} ~${etaText(alert.trajectory.route_to_exit.eta_seconds)}`, "text-cyan-200");
+        appendAlertDetail(extra, tx("d_action"), actionText(alert.trajectory), "text-green-300");
+    }
+    appendAlertDetail(extra, "", tx("d_click"), "text-slate-400");
+
+    const resolveButton = document.createElement("button");
+    resolveButton.type = "button";
+    resolveButton.dataset.sfx = "manual";
+    resolveButton.className = "font-hud mt-1 w-full rounded-lg border border-cyan-400/50 bg-cyan-500/10 py-1.5 text-[11px] font-bold tracking-wide text-cyan-200 transition hover:bg-cyan-400/25 hover:shadow-[0_0_12px_rgba(34,211,238,.5)]";
+    resolveButton.textContent = tx("resolve_btn");
+    resolveButton.addEventListener("click", e => { e.stopPropagation(); resolveAlert(alert.id); });
+
+    card.append(details, extra, resolveButton);
+
+    bindHighlight(card, alert.type);
+    card.addEventListener("click", e => {
+        if (e.target.closest("button")) return;
+        selectCamera(alert.location);
+        openDetails(alert);
+    });
+    return card;
+}
+
+let lastAlerts = [];
+async function fetchAlerts() {  // HTTP fallback, used only while the WebSocket is down
+    if (!auth) return;
+    const t0 = performance.now();
+    try {
+        const data = await requestJson(`${API_BASE}/security_feed`);
+        lastLatency = Math.round(performance.now() - t0);
+        applyFeed(data.alerts);
+    } catch (error) {
+        feedError(error);
+    }
+}
+
+function applyFeed(alerts) {
+    const container = $("alert-container");
+    const data = { alerts };
+    lastAlerts = alerts;
+    $("drawer-count").textContent = tx("drawer_count", { n: alerts.length });
+    {
+        updateHud({ online: true, latency: lastLatency, count: alerts.length });
+
+        const signature = JSON.stringify(data.alerts);
+        if (signature === lastAlertsSignature) return;
+        lastAlertsSignature = signature;
+
+        const newAlerts = firstLoad ? [] : data.alerts.filter(a => !seenIds.has(a.id));
+        data.alerts.forEach(a => seenIds.add(a.id));
+        firstLoad = false;
+        if (newAlerts.length) announceNewAlerts(newAlerts);
+        const newIdSet = new Set(newAlerts.map(a => a.id));
+
+        const seenTypes = new Set();
+        currentTrajectories = [];
+        alertsByLocation = {};
+        data.alerts.forEach(a => {
+            if (a.trajectory && !seenTypes.has(a.type)) {
+                seenTypes.add(a.type);
+                currentTrajectories.push({ type: a.type, trajectory: a.trajectory });
+            }
+            if (!alertsByLocation[a.location]) alertsByLocation[a.location] = [];
+            alertsByLocation[a.location].push(a.type);
+        });
+        if (lockedType && !seenTypes.has(lockedType)) lockedType = null;
+
+        container.replaceChildren();
+        renderCameraMarkers(CAMERA_LOCATIONS, new Set(data.alerts.map(a => a.location)));
+        renderLegend();
+        drawTrajectories();
+        updateCctvMeta();
+
+        if (data.alerts.length === 0) {
+            const p = document.createElement("p");
+            p.className = "font-data mt-20 text-center text-sm font-medium text-emerald-400";
+            p.textContent = tx("no_alerts");
+            container.appendChild(p);
+            return;
+        }
+
+        data.alerts.forEach(alert => container.appendChild(buildAlertCard(alert, newIdSet.has(alert.id))));
+    }
+}
+
+function feedError(error) {
+    const container = $("alert-container");
+    {
+        console.error("Error fetching alerts:", error);
+        lastAlertsSignature = null;
+        updateHud({ online: false, count: 0 });
+        currentTrajectories = [];
+        alertsByLocation = {};
+        renderLegend();
+        drawTrajectories();
+        container.replaceChildren();
+        const msg = document.createElement("p");
+        msg.className = "font-data mt-10 text-center text-sm text-red-400";
+        msg.textContent = tx("load_fail", { m: error.message });
+        container.appendChild(msg);
+    }
+}
+
+async function resolveAlert(id) {
+    try {
+        await requestJson(`${API_BASE}/resolve_alert/${id}`, { method: "PUT" });
+        Sound.resolve();
+        showToast(tx("resolved_ok"), "success", { label: tx("undo"), onClick: () => reopenAlert(id) });
+        if (!wsOpen()) { lastAlertsSignature = null; await fetchAlerts(); }
+        loadStats();
+    } catch (error) {
+        console.error("Error resolving alert:", error);
+        showToast(tx("resolve_fail", { m: error.message }), "error");
+        Sound.error();
+    }
+}
+
+async function reopenAlert(id) {
+    try {
+        await requestJson(`${API_BASE}/reopen_alert/${id}`, { method: "PUT" });
+        showToast(tx("reopened_ok"), "success");
+        if (!wsOpen()) { lastAlertsSignature = null; await fetchAlerts(); }
+        loadStats();
+    } catch (error) {
+        showToast(tx("reopen_fail", { m: error.message }), "error");
+        Sound.error();
+    }
+}
+
+async function resetDatabase() {
+    if (!confirm(tx("reset_confirm"))) return;
+    try {
+        await requestJson(`${API_BASE}/reset_db`, { method: "DELETE" });
+        Sound.reset();
+        showToast(tx("reset_ok"), "success");
+        if (!wsOpen()) {  // when live, the server's reset push already did this
+            lastAlertsSignature = null; firstLoad = true; seenIds.clear(); lockedType = null;
+            await fetchAlerts();
+        }
+        if (!$("residents-view").classList.contains("hidden")) loadResidents();
+    } catch (error) {
+        console.error("Error resetting demo data:", error);
+        showToast(tx("reset_fail", { m: error.message }), "error");
+        Sound.error();
+    }
+}
+
+// Every API call carries the signed login token. A 401 anywhere means the session ended: back to the login screen.
+async function requestJson(url, options = {}, { noAuth = false } = {}) {
+    let response;
+    const headers = { ...(options.headers || {}) };
+    if (auth && !noAuth) headers.Authorization = `Bearer ${auth.token}`;
+    try {
+        response = await fetch(url, { ...options, headers });
+    } catch (error) {
+        if (error instanceof TypeError) {
+            throw new Error(tx("no_backend", { o: new URL(url, location.href).origin }));
+        }
+        throw error;
+    }
+    const responseText = await response.text();
+    let data;
+    try {
+        data = responseText ? JSON.parse(responseText) : {};
+    } catch {
+        throw new Error(tx("bad_json", { s: response.status }));
+    }
+    if (response.status === 401 && !noAuth && auth) {
+        logout(tx("session_end"));
+    }
+    if (!response.ok) {
+        const d = data.detail;
+        const err = new Error((typeof d === "string" ? d : "") || data.message || `Request failed (${response.status})`);
+        err.status = response.status;
+        throw err;
+    }
+    return data;
+}
+
+function openDetails(a) {
+    const t = a.trajectory;
+    const rows = [
+        [tx("d_type"), typeLabel(a.type)],
+        [tx("d_at"), locName(a.location)],
+        [tx("d_time"), formatAlertTime(a.time)],
+        [tx("d_last"), locName(a.last_seen_area)]
+    ];
+    if (a.pet_name) rows.push([tx("d_pet"), `${a.pet_name} (${a.species || tx("d_unknown")})`]);
+    if (a.owner_name) rows.push([tx("d_owner"), a.owner_name], [tx("d_phone"), a.owner_phone], [tx("d_unit"), a.owner_unit]);
+    if (a.plate_number || /vehicle/i.test(a.type)) rows.push([tx("d_plate"), a.plate_number || tx("d_noplate")]);
+    if (t) rows.push(
+        [tx("d_first"), `${locName(t.first_seen.location)} · ${t.first_seen.time}`],
+        [tx("d_sight"), String(t.total_sightings)],
+        [tx("d_pred"), zoneText(t.predicted_next_zone)],
+        ...(t.route_to_exit ? [[tx("d_route"), `${t.route_to_exit.path.map(locName).join(" → ")} (~${etaText(t.route_to_exit.eta_seconds)})`]] : []),
+        [tx("d_action"), actionText(t)]
+    );
+
+    $("dt-title").textContent = typeLabel(a.type);
+    $("dt-title").style.color = typeColor(a.type);
+    $("dt-img").src = a.image_url;
+    const box = $("dt-rows");
+    box.replaceChildren();
+    rows.forEach(([k, v]) => {
+        const row = document.createElement("div");
+        const key = document.createElement("span");
+        key.className = "text-slate-400";
+        key.textContent = `${k}: `;
+        const val = document.createElement("span");
+        val.className = "text-slate-100";
+        val.textContent = v;
+        row.append(key, val);
+        box.appendChild(row);
+    });
+    $("detail-view").classList.remove("hidden");
+    $("detail-view").classList.add("flex");
+    Sound.select();
+}
+function closeDetails() {
+    $("detail-view").classList.add("hidden");
+    $("detail-view").classList.remove("flex");
+}
+
+const petForm = $("lost-pet-form");
+const vMsg = $("owner-verify");
+const unitInput = petForm.querySelector("[name=unit_number]");
+
+function verifyResident(name, phone) {
+    return requestJson(`${API_BASE}/residents/verify`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name, phone })
+    });
+}
+
+async function checkOwner() {
+    const name = petForm.querySelector("[name=name]").value.trim();
+    const phone = petForm.querySelector("[name=phone]").value.trim();
+    if (!name || !phone) { vMsg.textContent = ""; unitInput.value = ""; return; }
+    try {
+        const r = await verifyResident(name, phone);
+        unitInput.value = r.unit_number;
+        vMsg.className = "font-data text-xs text-emerald-400 sm:col-span-2";
+        vMsg.textContent = tx("pf_verified", { u: r.unit_number });
+    } catch (e) {
+        unitInput.value = "";
+        vMsg.className = "font-data text-xs text-red-400 sm:col-span-2";
+        vMsg.textContent = `✘ ${e.message}`;
+    }
+}
+["name", "phone"].forEach(n => petForm.querySelector(`[name=${n}]`).addEventListener("change", checkOwner));
+
+$("pet-location").addEventListener("change", e => { selectCamera(e.target.value); Sound.select(); });
+$("use-cctv-cam").addEventListener("click", () => { $("pet-location").value = selectedCamera; Sound.select(); });
+
+petForm.addEventListener("submit", async event => {
+    event.preventDefault();
+    const form = event.currentTarget;
+    const formData = new FormData(form);
+    const message = $("registration-message");
+    const button = $("register-pet-button");
+    message.textContent = "";
+    button.disabled = true;
+    button.textContent = tx("pf_submitting");
+
+    try {
+        // A resident reports under their own login (the server checks it again); staff verify name + phone.
+        const resident = isResident() ? { resident_id: auth.resident.id } : await verifyResident(formData.get("name"), formData.get("phone"));
+
+        let petImageUrl = "";
+        const photo = formData.get("pet_photo");
+        if (photo instanceof File && photo.size > 0) {
+            const uploadData = new FormData();
+            uploadData.append("file", photo);
+            const uploaded = await requestJson(`${API_BASE}/upload_image`, { method: "POST", body: uploadData });
+            petImageUrl = `${new URL(API_BASE).origin}${uploaded.image_url}`;
+        }
+
+        await requestJson(`${API_BASE}/lost_pets`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+                resident_id: resident.resident_id,
+                pet_name: formData.get("pet_name"),
+                species: formData.get("species"),
+                pet_image_url: petImageUrl,
+                last_seen_location: formData.get("last_seen_location")
+            })
+        });
+
+        message.className = "mt-3 text-sm text-green-400";
+        message.textContent = tx("pf_ok");
+        showToast(tx("pf_toast"), "success");
+        Sound.resolve();
+        form.reset();
+        vMsg.textContent = "";
+        if (isResident()) loadMyPets();
+        else if (!wsOpen()) { lastAlertsSignature = null; await fetchAlerts(); }
+    } catch (error) {
+        message.className = "mt-3 text-sm text-red-400";
+        message.textContent = tx("pf_fail", { m: error.message });
+        showToast(tx("pf_fail_t", { m: error.message }), "error");
+        Sound.error();
+    } finally {
+        button.disabled = false;
+        button.textContent = tx("pf_submit");
+    }
+});
+
+let allResidents = [];
+
+// The site plan has 60 houses. Show each with its occupancy and disable the full ones.
+async function loadUnits() {
+    const sel = document.querySelector("#res-form [name=unit_number]");
+    try {
+        const { units, max_per_unit } = await requestJson(`${API_BASE}/units`);
+        const keep = sel.value;
+        sel.querySelectorAll("option:not(:first-child)").forEach(o => o.remove());
+        sel.append(...units.map(u => {
+            const o = new Option(`${u.unit}  (${u.count}/${max_per_unit})`, u.unit);
+            o.disabled = u.count >= max_per_unit;
+            return o;
+        }));
+        sel.value = keep;
+    } catch { /* the server still validates the unit, so the form keeps working */ }
+}
+
+async function loadResidents() {
+    try {
+        allResidents = (await requestJson(`${API_BASE}/residents`)).residents;
+        $("res-msg").textContent = tx("res_count", { n: allResidents.length });
+        renderResidents();
+        loadUnits();
+    } catch (e) {
+        $("res-msg").textContent = `✘ ${e.message}`;
+    }
+}
+
+function renderResidents() {
+    const q = $("res-search").value.trim().toLowerCase();
+    const body = $("res-body");
+    body.replaceChildren();
+    allResidents
+        .filter(r => `${r.name} ${r.phone} ${r.unit_number}`.toLowerCase().includes(q))
+        .forEach(r => {
+            const tr = document.createElement("tr");
+            tr.className = "border-t border-cyan-400/10 hover:bg-cyan-400/5";
+            [r.id, r.name, r.phone, r.unit_number, (r.registration_date || "").slice(0, 16),
+             r.missing_pets ? tx("pet_missing", { n: r.missing_pets }) : "—"].forEach(v => {
+                const td = document.createElement("td");
+                td.className = "px-2 py-1.5";
+                td.textContent = v;
+                tr.appendChild(td);
+            });
+            
+            const tdAction = document.createElement("td");
+            tdAction.className = "px-2 py-1.5 text-right";
+            const delBtn = document.createElement("button");
+            delBtn.className = "text-red-400 hover:text-red-300 font-bold text-lg";
+            delBtn.textContent = "✕";
+            delBtn.onclick = async () => {
+                if(!confirm(`Delete resident ${r.name}?`)) return;
+                try {
+                    await requestJson(`${API_BASE}/residents/${r.id}`, {method: "DELETE"});
+                    showToast("Resident deleted", "success");
+                    loadResidents();
+                } catch(e) { showToast(e.message, "error"); }
+            };
+            tdAction.appendChild(delBtn);
+            tr.appendChild(tdAction);
+            
+            body.appendChild(tr);
+        });
+}
+$("res-search").addEventListener("input", renderResidents);
+
+$("res-form").addEventListener("submit", async e => {
+    e.preventDefault();
+    const f = e.currentTarget, d = new FormData(f);
+    try {
+        await requestJson(`${API_BASE}/residents`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ name: d.get("name"), phone: d.get("phone"), unit_number: d.get("unit_number") })
+        });
+        f.reset();
+        await loadResidents();
+        $("res-msg").textContent = tx("res_added");
+        showToast(tx("res_toast"), "success");
+    } catch (err) {
+        $("res-msg").textContent = `✘ ${err.message}`;
+        showToast(tx("res_fail", { m: err.message }), "error");
+        Sound.error();
+    }
+});
+
+const photoInput = petForm.querySelector("[name=pet_photo]");
+photoInput.addEventListener("change", () => {
+    const file = photoInput.files[0];
+    const img = $("photo-preview");
+    $("photo-name").textContent = file ? file.name : tx("pf_photo_hint");
+    if (file) { img.src = URL.createObjectURL(file); img.classList.remove("hidden"); }
+    else { img.classList.add("hidden"); }
+});
+petForm.addEventListener("reset", () => {
+    $("photo-name").textContent = tx("pf_photo_hint");
+    $("photo-preview").classList.add("hidden");
+});
+
+// --- REAL-TIME WEBSOCKET LINK ---
+const WS_URL = API_BASE.replace(/^http/, "ws").replace(/\/api$/, "") + "/ws";
+let ws = null, wsRetries = 0, pollTimer = null, pingSentAt = 0, wsTimer = null;
+const wsOpen = () => !!ws && ws.readyState === WebSocket.OPEN;
+
+async function connectWS() {
+    if (!auth) return;
+    clearTimeout(wsTimer);
+    // browsers can't set headers on a WebSocket, so a short-lived single-purpose ticket travels in the URL
+    let ticket;
+    try {
+        ticket = (await requestJson(`${API_BASE}/ws_ticket`)).ticket;
+    } catch {
+        if (!auth) return;
+        if (!pollTimer) { pollTimer = setInterval(fetchAlerts, 2000); fetchAlerts(); }
+        wsTimer = setTimeout(connectWS, Math.min(1000 * 2 ** wsRetries++, 10000));
+        return;
+    }
+    if (!auth) return;
+    const sock = ws = new WebSocket(`${WS_URL}?token=${encodeURIComponent(ticket)}`);
+    ws.onopen = () => {
+        wsRetries = 0;
+        clearInterval(pollTimer); pollTimer = null;
+        $("hud-link").textContent = tx("link_live");
+        sendPing();
+    };
+    ws.onmessage = e => {
+        const msg = JSON.parse(e.data);
+        if (msg.event === "pong") {
+            lastLatency = Math.round(performance.now() - pingSentAt);
+            $("hud-latency").textContent = `${lastLatency} ms`;
+        } else if (msg.event === "feed") {
+            if (msg.reset) { firstLoad = true; seenIds.clear(); lockedType = null; lastAlertsSignature = null; }
+            applyFeed(msg.alerts);
+        }
+    };
+    ws.onclose = () => {  // fall back to polling, then retry with backoff (a 401 on the poll sends us to the login screen)
+        if (sock !== ws || !auth) return;
+        if (!pollTimer) { pollTimer = setInterval(fetchAlerts, 2000); fetchAlerts(); }
+        wsTimer = setTimeout(connectWS, Math.min(1000 * 2 ** wsRetries++, 10000));
+    };
+    ws.onerror = () => sock.close();
+}
+function stopWS() {
+    clearTimeout(wsTimer); clearInterval(pollTimer); pollTimer = null;
+    const old = ws; ws = null;
+    if (old) old.close();
+}
+function sendPing() {
+    if (!wsOpen()) return;
+    pingSentAt = performance.now();
+    ws.send(JSON.stringify({ op: "ping" }));
+}
+setInterval(sendPing, 5000);
+
+// --- MOBILE ALERT DRAWER (tap or swipe the handle) ---
+(() => {
+    const drawer = $("alert-drawer");
+    let startY = null;
+    $("drawer-handle").addEventListener("click", () => drawer.toggleAttribute("data-open"));
+    $("drawer-header").addEventListener("click", () => drawer.toggleAttribute("data-open"));
+    [$("drawer-handle"), $("drawer-header")].forEach(el => {
+        el.addEventListener("touchstart", e => { startY = e.touches[0].clientY; }, { passive: true });
+        el.addEventListener("touchend", e => {
+            if (startY === null) return;
+            const dy = e.changedTouches[0].clientY - startY;
+            startY = null;
+            if (Math.abs(dy) > 40) { drawer.toggleAttribute("data-open", dy < 0); e.preventDefault(); }  // swipe up = open
+        }, { passive: false });
+    });
+})();
+
+// --- SIREN / VOICE TOGGLES ---
+const savePref = (k, on) => { try { localStorage.setItem(k, on ? "on" : "off"); } catch {} };
+$("btn-siren").addEventListener("click", () => {
+    Sound.sirenOn = !Sound.sirenOn; savePref("sg-siren", Sound.sirenOn); refreshToggles();
+    if (Sound.sirenOn) Sound.siren(1.2); else Sound.click();
+});
+$("btn-voice").addEventListener("click", () => {
+    Voice.on = !Voice.on; savePref("sg-voice", Voice.on); refreshToggles();
+    if (Voice.on) Voice.speak(tx("voice_on")); else if (Voice.ok) speechSynthesis.cancel();
+});
+
+// --- CAMERA GRID ---
+CAMERA_LOCATIONS.forEach(cam => {
+    const cell = document.createElement("button");
+    cell.type = "button"; cell.dataset.sfx = "manual";
+    cell.className = "relative overflow-hidden rounded-lg border-2 border-cyan-400/30 bg-black transition hover:border-cyan-300";
+    const cv = document.createElement("canvas");
+    cv.width = CW; cv.height = CH; cv.className = "block w-full";
+    cell.appendChild(cv);
+    cell.addEventListener("click", () => { selectCamera(cam.name); showView("dashboard"); Sound.select(); });
+    $("grid-body").appendChild(cell);
+    gridCams.push({ name: cam.name, cv, cell });
+});
+
+// --- ALERT FILTER CHIPS ---
+(() => {
+    const box = $("alert-container"), bar = $("alert-filters");
+    const refresh = () => {
+        box.dataset.empty = tx("filter_empty");
+        const f = box.dataset.filter || "all", cards = [...box.querySelectorAll("[data-kind]")];
+        box.classList.toggle("filter-empty", f !== "all" && cards.length > 0 && !cards.some(c => c.dataset.kind === f));
+    };
+    bar.addEventListener("click", e => {
+        const b = e.target.closest("[data-filter]");
+        if (!b) return;
+        box.dataset.filter = b.dataset.filter;
+        bar.querySelectorAll(".chip").forEach(c => c.classList.toggle("is-on", c === b));
+        refresh();
+    });
+    new MutationObserver(refresh).observe(box, { childList: true });
+})();
+
+// --- PHONE DRAWER TABS: Alerts / Tracker ---
+function setDrawerTab(tab) {
+    const trk = tab === "tracker";
+    $("alert-container").classList.toggle("hidden", trk);
+    $("alert-filters").classList.toggle("hidden", trk);
+    $("tracker-pane").classList.toggle("hidden", !trk);
+    $("tracker-pane").classList.toggle("flex", trk);
+    $("drawer-tabs").querySelectorAll("[data-dtab]").forEach(b => {
+        const on = b.dataset.dtab === tab;
+        b.classList.toggle("is-on", on);
+        b.setAttribute("aria-selected", on);
+    });
+}
+$("drawer-tabs").addEventListener("click", e => {
+    const b = e.target.closest("[data-dtab]");
+    if (!b) return;
+    setDrawerTab(b.dataset.dtab);
+    $("alert-drawer").setAttribute("data-open", "");  // make sure the drawer is open when a tab is tapped
+});
+// On desktop the tracker has its own panel, so the phone-only tab must not leave the alert list hidden.
+matchMedia("(min-width: 1024px)").addEventListener("change", e => { if (e.matches) setDrawerTab("alerts"); });
+
+// ==========================================
+// ALERT HISTORY (search, filters, who resolved what and when, CSV for incident reports)
+// ==========================================
+const HIST_PAGE = 50;
+let histPage = 0, histTotal = 0, histTimer = null;
+const HIST_TYPES = ["suspicious_person", "unregistered_vehicle", "lost_pet", "tailgating", "trespasser"];
+
+function histParams(extra = {}) {
+    const p = new URLSearchParams({
+        q: $("h-q").value.trim(), type: $("h-type").value, status: $("h-status").value,
+        date_from: $("h-from").value, date_to: $("h-to").value, ...extra
+    });
+    return p.toString();
+}
+
+async function loadHistory() {
+    try {
+        const d = await requestJson(`${API_BASE}/history?${histParams({ limit: HIST_PAGE, offset: histPage * HIST_PAGE })}`);
+        histTotal = d.total;
+        const body = $("hist-body");
+        body.replaceChildren();
+        d.items.forEach(i => {
+            const tr = document.createElement("tr");
+            tr.className = "border-t border-cyan-400/10 hover:bg-cyan-400/5";
+            const detail = [i.pet_name && `🐾 ${i.pet_name}`, i.plate_number].filter(Boolean).join(" · ") || "—";
+            const cells = [i.time, `${typeIcon(i.type)} ${typeLabel(i.type)}`, locName(i.location), detail,
+                           i.status === "resolved" ? `✔ ${tx("st_resolved")}` : `● ${tx("st_open")}`, i.resolved_by || "—", i.resolved_at || "—"];
+            cells.forEach((v, n) => {
+                const td = document.createElement("td");
+                td.className = "px-2 py-1.5 whitespace-nowrap";
+                td.textContent = v;
+                if (n === 1) td.style.color = typeColor(i.type);
+                if (n === 4) td.className += i.status === "resolved" ? " text-emerald-400" : " text-red-300";
+                tr.appendChild(td);
+            });
+            body.appendChild(tr);
+        });
+        if (!d.items.length) {
+            const tr = document.createElement("tr");
+            const td = document.createElement("td");
+            td.colSpan = 7; td.className = "px-2 py-8 text-center text-slate-400"; td.textContent = tx("hist_none");
+            tr.appendChild(td); body.appendChild(tr);
+        }
+        const from = d.total ? histPage * HIST_PAGE + 1 : 0;
+        $("hist-count").textContent = tx("hist_range", { a: from, b: histPage * HIST_PAGE + d.items.length, n: d.total });
+        $("h-prev").disabled = histPage === 0;
+        $("h-next").disabled = (histPage + 1) * HIST_PAGE >= d.total;
+    } catch (e) {
+        $("hist-count").textContent = tx("hist_fail", { m: e.message });
+    }
+}
+const reloadHistory = () => { histPage = 0; loadHistory(); };
+$("hist-filters").addEventListener("submit", e => e.preventDefault());
+$("h-q").addEventListener("input", () => { clearTimeout(histTimer); histTimer = setTimeout(reloadHistory, 300); });
+["h-type", "h-status", "h-from", "h-to"].forEach(id => $(id).addEventListener("change", reloadHistory));
+$("h-clear").addEventListener("click", () => { $("hist-filters").reset(); reloadHistory(); });
+$("h-prev").addEventListener("click", () => { histPage = Math.max(0, histPage - 1); loadHistory(); });
+$("h-next").addEventListener("click", () => { histPage++; loadHistory(); });
+
+const csvCell = v => `"${String(v ?? "").replaceAll('"', '""')}"`;
+$("h-csv").addEventListener("click", async () => {
+    try {
+        const rows = [];
+        for (let off = 0; ; off += 200) {   // the server caps a page at 200 rows, so walk through all pages
+            const d = await requestJson(`${API_BASE}/history?${histParams({ limit: 200, offset: off })}`);
+            rows.push(...d.items);
+            if (rows.length >= d.total || !d.items.length) break;
+        }
+        const head = ["id", "time", "type", "location", "plate_number", "pet_name", "status", "resolved_by", "resolved_at"];
+        const csv = [head.join(","), ...rows.map(r => head.map(h => csvCell(r[h])).join(","))].join("\r\n");
+        const a = document.createElement("a");
+        a.href = URL.createObjectURL(new Blob(["﻿" + csv], { type: "text/csv;charset=utf-8" }));
+        a.download = `simeguard-alerts-${new Date().toISOString().slice(0, 10)}.csv`;
+        a.click();
+        URL.revokeObjectURL(a.href);
+        showToast(tx("hist_csv_done"), "success");
+    } catch (e) {
+        showToast(tx("hist_fail", { m: e.message }), "error");
+    }
+});
+
+// ==========================================
+// LOGIN, ROLES, ACCOUNT
+// ==========================================
+function applyRole() {
+    document.body.classList.toggle("resident-mode", isResident());   // CSS hides everything except the Lost Pet Register
+    $("btn-reset").classList.toggle("hidden", !(isAdmin() && auth.demo));  // the server also refuses outside demo mode
+    $("res-form").classList.toggle("hidden", !isAdmin());
+    $("res-form").classList.toggle("grid", isAdmin());
+    $("user-form").classList.toggle("hidden", !isAdmin());
+    $("user-form").classList.toggle("grid", isAdmin());
+    const b = $("btn-user");
+    b.classList.toggle("hidden", !auth);
+    if (auth) b.textContent = `👤 ${auth.username}`;
+    // the owner fields are hidden for residents, so they must not block form submission
+    ["pf-name", "pf-phone"].forEach(id => { $(id).required = !isResident(); });
+    if (isResident() && auth.resident) {
+        $("pf-name").value = auth.resident.name;
+        $("pf-unit").value = auth.resident.unit_number;
+        $("reporting-as").textContent = tx("reporting_as", { n: auth.resident.name, u: auth.resident.unit_number });
+    }
+    $("pet-sub").dataset.i18n = isResident() ? "pet_sub_res" : "pet_sub";
+    $("pet-sub").textContent = tx($("pet-sub").dataset.i18n);
+    resetIdleTimer();
+}
+
+// ----- residents: own reports + automatic sign-out after 15 idle minutes (staff screens stay on) -----
+const IDLE_MS = 15 * 60 * 1000;
+let idleTimer = null;
+function resetIdleTimer() {
+    clearTimeout(idleTimer);
+    if (isResident()) idleTimer = setTimeout(() => logout(tx("idle_logout")), IDLE_MS);
+}
+["pointerdown", "keydown", "touchstart"].forEach(ev => document.addEventListener(ev, () => { if (idleTimer) resetIdleTimer(); }, { passive: true }));
+
+let myPets = [];
+async function loadMyPets() {
+    try { myPets = (await requestJson(`${API_BASE}/my_pets`)).pets; } catch { myPets = []; }
+    renderMyPets();
+}
+function renderMyPets() {
+    const box = $("my-pets");
+    box.replaceChildren();
+    if (!myPets.length) {
+        const p = document.createElement("p");
+        p.className = "font-data text-center text-xs text-slate-400";
+        p.textContent = tx("no_reports");
+        box.appendChild(p);
+        return;
+    }
+    myPets.forEach(p => {
+        const row = document.createElement("div");
+        row.className = "pet-row";
+        const img = document.createElement("img");
+        img.src = p.pet_image_url || ""; img.alt = "";
+        img.className = "h-12 w-12 shrink-0 rounded-md border border-cyan-400/40 object-cover";
+        const info = document.createElement("div");
+        info.className = "min-w-0 flex-1 text-sm";
+        const name = document.createElement("div");
+        name.className = "truncate font-semibold text-white";
+        name.textContent = `${p.pet_name} · ${p.species || ""}`;
+        const loc = document.createElement("div");
+        loc.className = "font-data truncate text-xs text-slate-300";
+        loc.textContent = `📍 ${locName(p.last_seen_location)}`;
+        info.append(name, loc);
+        
+        if (p.status === "missing") {
+            const btn = document.createElement("button");
+            btn.className = "status-pill status-missing hover:bg-red-500/30 transition cursor-pointer";
+            btn.textContent = "Mark as Found";
+            btn.onclick = async () => {
+                try {
+                    await requestJson(`${API_BASE}/my_pets/${p.pet_id}/found`, { method: "PUT" });
+                    showToast("Pet marked as found!", "success");
+                    loadMyPets();
+                } catch(e) { showToast(e.message, "error"); }
+            };
+            row.append(img, info, btn);
+        } else {
+            const st = document.createElement("span");
+            st.className = "status-pill status-found";
+            st.textContent = tx("st_found");
+            row.append(img, info, st);
+        }
+        
+        box.appendChild(row);
+    });
+}
+
+// Show / hide password
+document.addEventListener("click", e => {
+    const b = e.target.closest("[data-pw]");
+    if (!b) return;
+    const input = $(b.dataset.pw), show = input.type === "password";
+    input.type = show ? "text" : "password";
+    b.textContent = tx(show ? "pw_hide" : "pw_show");
+});
+
+function showLogin(msg = "") {
+    $("login-view").classList.remove("hidden");
+    $("login-view").classList.add("flex");
+    $("login-msg").textContent = msg;
+    $("lg-pass").value = "";
+    setTimeout(() => ($("lg-user").value ? $("lg-pass") : $("lg-user")).focus(), 50);
+}
+
+function logout(msg = "") {
+    stopWS();
+    auth = null;
+    for (const store of ["localStorage", "sessionStorage"]) { try { window[store].removeItem("sg-auth"); } catch {} }
+    $("lost-pet-form").reset(); myPets = []; renderMyPets();   // nothing of the last user stays on screen
+    lastAlertsSignature = null; firstLoad = true; seenIds.clear(); lockedType = null; lastAlerts = [];
+    updateHud({ online: false, count: 0 });
+    closeAccount(); closeDetails(); showView("dashboard");
+    applyRole();
+    showLogin(msg);
+}
+
+function startSession() {
+    $("login-view").classList.add("hidden");
+    $("login-view").classList.remove("flex");
+    applyRole();
+    if (isResident()) {            // residents go straight to the Lost Pet Register: no map, no alert stream
+        showView("lost-pet");
+        loadMyPets();
+        return;
+    }
+    connectWS();
+    fetchAlerts();
+    loadStats();
+}
+
+$("login-form").addEventListener("submit", async e => {
+    e.preventDefault();
+    const btn = $("login-btn");
+    btn.disabled = true; btn.textContent = tx("signing_in"); $("login-msg").textContent = "";
+    try {
+        const d = await requestJson(`${API_BASE}/login`, {
+            method: "POST", headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ username: $("lg-user").value, password: $("lg-pass").value })
+        }, { noAuth: true });
+        auth = { token: d.token, username: d.username, role: d.role, demo: !!d.demo, resident: d.resident || null };
+        saveAuth($("lg-remember").checked);
+        $("lg-pass").value = ""; $("lg-pass").type = "password";
+        Sound.resolve();
+        startSession();
+    } catch (err) {
+        $("login-msg").textContent = err.status === 401 ? tx("login_wrong") : err.message;
+        Sound.error();
+    } finally {
+        btn.disabled = false; btn.textContent = tx("sign_in");
+    }
+});
+
+function openAccount() {
+    if (!auth) return;
+    $("acc-title").textContent = tx("acc_title", { u: auth.username, r: tx("role_" + auth.role) });
+    $("acc-msg").textContent = "";
+    if (isAdmin()) fillResidentPicker();
+    $("account-view").classList.remove("hidden");
+    $("account-view").classList.add("flex");
+}
+// Admin: a "resident" login must be linked to a registered household, so the form offers the residents list.
+async function fillResidentPicker() {
+    const sel = $("user-form").querySelector("[name=resident_id]");
+    try {
+        const list = (await requestJson(`${API_BASE}/residents`)).residents;
+        sel.replaceChildren(new Option(tx("acc_pick"), ""), ...list.map(r => new Option(`${r.name} · ${r.unit_number}`, r.id)));
+    } catch {}
+}
+$("user-form").querySelector("[name=role]").addEventListener("change", e => {
+    const sel = $("user-form").querySelector("[name=resident_id]"), res = e.target.value === "resident";
+    sel.classList.toggle("hidden", !res);
+    sel.required = res;
+});
+function closeAccount() {
+    $("account-view").classList.add("hidden");
+    $("account-view").classList.remove("flex");
+}
+$("pw-form").addEventListener("submit", async e => {
+    e.preventDefault();
+    const f = e.currentTarget, d = new FormData(f);
+    try {
+        await requestJson(`${API_BASE}/me/password`, {
+            method: "POST", headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ old_password: d.get("old_password"), new_password: d.get("new_password") })
+        });
+        f.reset();
+        $("acc-msg").className = "font-data mt-3 min-h-[1.25rem] text-xs text-emerald-400";
+        $("acc-msg").textContent = tx("acc_pw_ok");
+    } catch (err) {
+        $("acc-msg").className = "font-data mt-3 min-h-[1.25rem] text-xs text-red-400";
+        $("acc-msg").textContent = err.message;
+    }
+});
+$("user-form").addEventListener("submit", async e => {
+    e.preventDefault();
+    const f = e.currentTarget, d = new FormData(f);
+    try {
+        await requestJson(`${API_BASE}/users`, {
+            method: "POST", headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ username: d.get("username"), password: d.get("password"), role: d.get("role"),
+                                   resident_id: d.get("role") === "resident" ? Number(d.get("resident_id")) : null })
+        });
+        f.reset();
+        f.querySelector("[name=resident_id]").classList.add("hidden");
+        $("acc-msg").className = "font-data mt-3 min-h-[1.25rem] text-xs text-emerald-400";
+        $("acc-msg").textContent = tx("acc_user_ok");
+    } catch (err) {
+        $("acc-msg").className = "font-data mt-3 min-h-[1.25rem] text-xs text-red-400";
+        $("acc-msg").textContent = err.message;
+    }
+});
+
+// ==========================================
+// APPLY LANGUAGE (static text via data-i18n, everything dynamic is re-rendered)
+// ==========================================
+function applyLang() {
+    document.documentElement.lang = LANG;
+    $("pet-sub").dataset.i18n = isResident() ? "pet_sub_res" : "pet_sub";
+    document.querySelectorAll("[data-i18n]").forEach(el => { el.textContent = tx(el.dataset.i18n); });
+    document.querySelectorAll("[data-i18n-ph]").forEach(el => { el.placeholder = tx(el.dataset.i18nPh); });
+    document.querySelectorAll("#btn-lang, #boot-lang, #login-form .hud-btn[onclick='toggleLang()']").forEach(b => {
+        b.textContent = LANG === "en" ? "EN | BM" : "BM | EN";
+    });
+    // select options keep their English value (the server's camera name) but show a translated label
+    const sel = $("pet-location"), cur = sel.value;
+    sel.replaceChildren(...CAMERA_LOCATIONS.map(c => new Option(locName(c.name), c.name)));
+    sel.value = cur || selectedCamera;
+    const ht = $("h-type"), hs = $("h-status"), htv = ht.value, hsv = hs.value;
+    ht.replaceChildren(new Option(tx("all_types"), ""), ...HIST_TYPES.map(ty => new Option(typeLabel(ty), ty)));
+    hs.replaceChildren(new Option(tx("all_status"), ""), new Option(tx("st_open"), "open"), new Option(tx("st_resolved"), "resolved"));
+    ht.value = htv; hs.value = hsv;
+    const roles = $("user-form").querySelector("[name=role]");
+    roles.options[0].text = tx("role_guard"); roles.options[1].text = tx("role_admin"); roles.options[2].text = tx("role_resident");
+    document.querySelectorAll("[data-pw]").forEach(b => { b.textContent = tx($(b.dataset.pw).type === "password" ? "pw_show" : "pw_hide"); });
+    if (isResident() && auth.resident) $("reporting-as").textContent = tx("reporting_as", { n: auth.resident.name, u: auth.resident.unit_number });
+    renderMyPets();
+    if (!$("photo-preview").src || $("photo-preview").classList.contains("hidden")) $("photo-name").textContent = tx("pf_photo_hint");
+    $("alert-container").dataset.empty = tx("filter_empty");
+    Object.entries({
+        "btn-sound": "sound_t", "btn-siren": "siren_t", "btn-voice": "voice_t", "btn-traj": "traj_t", "btn-scan": "scan_t",
+        "cam-prev": "cam_prev", "cam-next": "cam_next", "btn-lang": "lang_t", "btn-user": "user_t"
+    }).forEach(([id, key]) => { $(id).title = tx(key); });
+    refreshToggles();
+    updateHud(hudState);
+    renderStats();
+    // re-render the live views from the cached feed
+    renderLegend();
+    // Only re-render the feed once real data has arrived; applying an empty one would clear firstLoad and make
+    // every existing alert look new (siren on page load).
+    if (auth && !firstLoad) { lastAlertsSignature = null; applyFeed(lastAlerts); }
+    else { updateCctvMeta(); renderCameraMarkers(CAMERA_LOCATIONS); }
+    if (!$("residents-view").classList.contains("hidden")) renderResidents();
+    if (!$("history-view").classList.contains("hidden")) loadHistory();
+    if (!$("account-view").classList.contains("hidden")) openAccount();
+}
+function toggleLang() {
+    LANG = LANG === "en" ? "ms" : "en";
+    try { localStorage.setItem("sg-lang", LANG); } catch {}
+    applyLang();
+    Sound.click();
+}
+
+// START
+initLeafletMap();
+applyLang();
+tickClock();
+setInterval(tickClock, 1000);
+setInterval(loadStats, 15000);
+requestAnimationFrame(drawCCTV);
+if (auth) {
+    startSession();
+    // validate the stored token right away; an expired one sends the guard back to the login screen
+    requestJson(`${API_BASE}/me`).then(me => {
+        const roleChanged = me.role !== auth.role;
+        auth = { ...auth, role: me.role, demo: !!me.demo, resident: me.resident || null };
+        applyRole();
+        if (roleChanged) startSession();
+    }).catch(() => {});
+} else {
+    showLogin();
+}
+</script>
+</body>
+</html>
