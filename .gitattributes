@@ -1,4 +1,0 @@
-# Normalise line endings in the repository; keep Windows scripts as CRLF
-* text=auto
-*.bat text eol=crlf
-*.png binary
